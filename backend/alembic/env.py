@@ -12,7 +12,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import all models so Alembic detects schema
-from app.models import base  # noqa: F401
+from app.models import base  # noqa: F401, E402
 
 target_metadata = base.Base.metadata
 
