@@ -13,20 +13,6 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: patchsense_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -57,7 +43,9 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/patchsense_test
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DATABASE_URL: ""
           REDIS_URL: redis://localhost:6379
           GITHUB_APP_ID: test
           GITHUB_PRIVATE_KEY_PATH: ./tests/fixtures/test-key.pem

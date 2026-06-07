@@ -1,30 +1,28 @@
 import uuid
+from typing import Any
 
-from sqlalchemy.orm import Session, joinedload
-
-from app.models.review import Review
+from supabase import Client
 
 PAGE_SIZE = 20
 
 
-# Returns a page of reviews ordered by most recent first
-def list_reviews(db: Session, page: int) -> list[Review]:
+def list_reviews(client: Client, page: int) -> list[Any]:
     offset = (page - 1) * PAGE_SIZE
-    return (
-        db.query(Review)
-        .options(joinedload(Review.findings))
-        .order_by(Review.created_at.desc())
-        .offset(offset)
-        .limit(PAGE_SIZE)
-        .all()
+    result = (
+        client.table("reviews")
+        .select("*, findings(*)")
+        .order("created_at", desc=True)
+        .range(offset, offset + PAGE_SIZE - 1)
+        .execute()
     )
+    return result.data  # type: ignore[return-value]
 
 
-# Returns a single review by id with its findings, or None if not found
-def get_review(db: Session, review_id: uuid.UUID) -> Review | None:
-    return (
-        db.query(Review)
-        .options(joinedload(Review.findings))
-        .filter(Review.id == review_id)
-        .first()
+def get_review(client: Client, review_id: uuid.UUID) -> Any | None:
+    result = (
+        client.table("reviews")
+        .select("*, findings(*)")
+        .eq("id", str(review_id))
+        .execute()
     )
+    return result.data[0] if result.data else None
