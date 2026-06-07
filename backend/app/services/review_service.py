@@ -1,11 +1,12 @@
 import uuid
+from typing import Any
 
 from supabase import Client
 
 PAGE_SIZE = 20
 
 
-def list_reviews(client: Client, page: int) -> list[dict]:
+def list_reviews(client: Client, page: int) -> list[Any]:
     offset = (page - 1) * PAGE_SIZE
     result = (
         client.table("reviews")
@@ -14,10 +15,10 @@ def list_reviews(client: Client, page: int) -> list[dict]:
         .range(offset, offset + PAGE_SIZE - 1)
         .execute()
     )
-    return result.data
+    return result.data  # type: ignore[return-value]
 
 
-def get_review(client: Client, review_id: uuid.UUID) -> dict | None:
+def get_review(client: Client, review_id: uuid.UUID) -> Any | None:
     result = (
         client.table("reviews")
         .select("*, findings(*)")
