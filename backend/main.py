@@ -1,9 +1,18 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import webhook, health
+from app.api.routes import webhook, health, reviews
 
 # Creates the FastAPI application instance
 app = FastAPI(title="PatchSense PR Guard", version="0.1.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health.router)
 app.include_router(webhook.router)
+app.include_router(reviews.router)
