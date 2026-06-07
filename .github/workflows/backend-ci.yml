@@ -47,13 +47,13 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt && pip install ruff mypy pytest pytest-asyncio
+        run: pip install -r requirements.txt && pip install ruff "mypy[pydantic]" pytest pytest-asyncio
 
       - name: Lint (ruff)
         run: ruff check .
 
       - name: Type check (mypy)
-        run: mypy app --ignore-missing-imports
+        run: mypy app --config-file mypy.ini
 
       - name: Run tests
         env:

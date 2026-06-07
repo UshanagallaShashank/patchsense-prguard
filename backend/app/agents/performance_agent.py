@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -8,7 +9,8 @@ from langsmith import traceable
 from app.core.config import settings
 from app.agents.prompts.performance_prompt import PERFORMANCE_SYSTEM_PROMPT
 
-_llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=settings.gemini_api_key)
+os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
+_llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
 
 
 # Runs performance analysis on a PR diff and returns structured findings
@@ -16,6 +18,8 @@ _llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=settings.
 async def run_performance_agent(diff: str) -> list[dict[str, Any]]:
     messages = [SystemMessage(content=PERFORMANCE_SYSTEM_PROMPT), HumanMessage(content=f"PR diff:\n{diff}")]
     response = await _llm.ainvoke(messages)
+    if not isinstance(response.content, str):
+        return []
     return _parse_findings(response.content, agent="performance")
 
 
