@@ -1,3 +1,5 @@
+from typing import Generator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -10,7 +12,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # Yields a DB session and closes it after the request
-def get_db_session() -> Session:
+def get_db_session() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
