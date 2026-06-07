@@ -7,29 +7,34 @@
 .PHONY: up up-build down logs clean
 
 PYTHON  := python3.11
-VENV    := .venv
 
-# All backend commands run inside backend/ so .venv/bin/* are relative — no absolute paths
+# venv lives inside backend/ — BE_VENV is relative to backend/ after cd
+VENV    := backend/.venv
+BE_VENV := .venv
+
 BE := cd backend &&
 FE := cd frontend &&
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-## install       install backend venv + pip deps, and frontend npm deps
+## install       create backend/.venv, install backend + frontend deps
 install:
-	$(BE) $(PYTHON) -m venv $(VENV)
-	$(BE) $(VENV)/bin/pip install --upgrade pip -q
-	$(BE) $(VENV)/bin/pip install -r requirements.txt -q
-	$(BE) $(VENV)/bin/pip install ruff mypy pytest pytest-asyncio -q
+	$(BE) $(PYTHON) -m venv $(BE_VENV)
+	$(VENV)/bin/pip install --upgrade pip -q
+	$(VENV)/bin/pip install -r backend/requirements.txt -q
+	$(VENV)/bin/pip install ruff mypy pytest pytest-asyncio -q
 	$(FE) npm ci
 
 # ── Dev servers ───────────────────────────────────────────────────────────────
 
-## dev-be         start FastAPI backend with hot-reload on :8000
+## dev-be         start FastAPI with hot-reload — watches only backend/app/
 dev-be:
-	$(BE) $(VENV)/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+	$(BE) $(BE_VENV)/bin/uvicorn main:app --host 0.0.0.0 --port 8000 \
+		--reload --reload-dir app \
+		--reload-exclude '*.venv*' --reload-exclude '*__pycache__*' \
+		--reload-exclude '*.pyc' --reload-exclude '*.egg-info*'
 
-## dev-fe         start Vite frontend dev server on :5173
+## dev-fe         start Vite dev server on :5173
 dev-fe:
 	$(FE) npm run dev
 
@@ -40,7 +45,7 @@ test: test-be test-fe
 
 ## test-be        run backend pytest only
 test-be:
-	$(BE) $(VENV)/bin/pytest tests/ -v
+	$(BE) $(BE_VENV)/bin/pytest tests/ -v
 
 ## test-fe        run frontend vitest only
 test-fe:
@@ -48,22 +53,22 @@ test-fe:
 
 ## test-cov       run both suites with coverage
 test-cov:
-	$(BE) $(VENV)/bin/pytest tests/ -v --cov=app --cov-report=term-missing
+	$(BE) $(BE_VENV)/bin/pytest tests/ -v --cov=app --cov-report=term-missing
 	$(FE) npm test -- --run --coverage
 
 # ── Lint & types ──────────────────────────────────────────────────────────────
 
 ## lint           lint backend with ruff
 lint:
-	$(BE) $(VENV)/bin/ruff check .
+	$(BE) $(BE_VENV)/bin/ruff check .
 
 ## lint-fix       lint backend and auto-fix safe issues
 lint-fix:
-	$(BE) $(VENV)/bin/ruff check . --fix
+	$(BE) $(BE_VENV)/bin/ruff check . --fix
 
 ## typecheck      mypy backend + tsc frontend
 typecheck:
-	$(BE) $(VENV)/bin/mypy app --config-file mypy.ini
+	$(BE) $(BE_VENV)/bin/mypy app --config-file mypy.ini
 	$(FE) npx tsc --noEmit
 
 # ── Build ─────────────────────────────────────────────────────────────────────
@@ -80,21 +85,21 @@ preview:
 
 ## migrate        apply all pending alembic migrations
 migrate:
-	$(BE) $(VENV)/bin/alembic upgrade head
+	$(BE) $(BE_VENV)/bin/alembic upgrade head
 
 ## migrate-down   rollback the last migration
 migrate-down:
-	$(BE) $(VENV)/bin/alembic downgrade -1
+	$(BE) $(BE_VENV)/bin/alembic downgrade -1
 
 ## migrate-gen    generate a new migration  (usage: make migrate-gen msg="add column")
 migrate-gen:
-	$(BE) $(VENV)/bin/alembic revision --autogenerate -m "$(msg)"
+	$(BE) $(BE_VENV)/bin/alembic revision --autogenerate -m "$(msg)"
 
 # ── Worker ────────────────────────────────────────────────────────────────────
 
 ## worker         start the ARQ background worker
 worker:
-	$(BE) $(VENV)/bin/python worker.py
+	$(BE) $(BE_VENV)/bin/python worker.py
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -116,9 +121,9 @@ logs:
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
-## clean          remove backend venv + caches, frontend dist + node_modules
+## clean          remove backend/.venv, backend caches, frontend build artifacts
 clean:
-	rm -rf backend/$(VENV) backend/__pycache__ backend/.pytest_cache
+	rm -rf $(VENV) backend/__pycache__ backend/.pytest_cache
 	rm -rf backend/.mypy_cache backend/.ruff_cache
 	find backend -name "*.pyc" -delete
 	rm -rf frontend/dist frontend/node_modules frontend/.vite
