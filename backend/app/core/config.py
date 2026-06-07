@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     langchain_api_key: str
     langchain_project: str = "patchsense-prguard"
     langchain_tracing_v2: str = "true"
-    database_url: str
+    supabase_url: str
+    supabase_key: str
+    database_url: str = ""
     redis_url: str = "redis://localhost:6379"
     env: str = "development"
     log_level: str = "INFO"

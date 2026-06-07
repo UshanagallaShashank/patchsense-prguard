@@ -2,25 +2,23 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from supabase import Client
 
-from app.core.database import get_db_session
+from app.core.supabase_client import get_supabase
 from app.schemas.review_schema import ReviewOut
 from app.services.review_service import get_review, list_reviews
 
 router = APIRouter(prefix="/api")
 
 
-# Returns a paginated list of reviews ordered by most recent
 @router.get("/reviews", response_model=list[ReviewOut])
-def get_reviews(page: int = 1, db: Session = Depends(get_db_session)) -> Any:
-    return list_reviews(db, page)
+def get_reviews(page: int = 1, client: Client = Depends(get_supabase)) -> Any:
+    return list_reviews(client, page)
 
 
-# Returns a single review with its findings by id
 @router.get("/reviews/{review_id}", response_model=ReviewOut)
-def get_review_by_id(review_id: uuid.UUID, db: Session = Depends(get_db_session)) -> Any:
-    review = get_review(db, review_id)
+def get_review_by_id(review_id: uuid.UUID, client: Client = Depends(get_supabase)) -> Any:
+    review = get_review(client, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
     return review

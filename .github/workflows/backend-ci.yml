@@ -57,7 +57,9 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/patchsense_test
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.placeholder
+          DATABASE_URL: ""
           REDIS_URL: redis://localhost:6379
           GITHUB_APP_ID: test
           GITHUB_PRIVATE_KEY_PATH: ./tests/fixtures/test-key.pem
