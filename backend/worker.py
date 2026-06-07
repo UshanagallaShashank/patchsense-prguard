@@ -1,15 +1,15 @@
-import asyncio
-
 from arq import run_worker
+from arq.connections import RedisSettings
 
 from app.core.config import settings
+from app.services.review_job import run_review_job
 
-# ARQ worker entrypoint — implemented in feature/queue-worker
-WorkerSettings = type(
-    "WorkerSettings",
-    (),
-    {"functions": [], "redis_settings": {"host": settings.redis_url}},
-)
+
+# ARQ worker settings — registers all background job functions
+class WorkerSettings:
+    functions = [run_review_job]
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+
 
 if __name__ == "__main__":
-    asyncio.run(run_worker(WorkerSettings))
+    run_worker(WorkerSettings)
