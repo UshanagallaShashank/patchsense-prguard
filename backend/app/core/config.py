@@ -5,10 +5,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    github_app_id: str
-    github_private_key_path: str
+    # GitHub App auth — set either private_key (PEM content) or private_key_path (file)
+    github_app_id: str = ""
+    github_private_key: str = ""
+    github_private_key_path: str = ""
     github_webhook_secret: str
+    # GitHub PAT — alternative to App auth for connecting to any repo/org
+    github_pat: str = ""
+    # Target org/owner; agents use this when no installation_id is available
+    github_owner: str = ""
     gemini_api_key: str
+    gemini_model: str = "gemini-2.5-flash"
     langchain_api_key: str
     langchain_project: str = "patchsense-prguard"
     langchain_tracing_v2: str = "true"

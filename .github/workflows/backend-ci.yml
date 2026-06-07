@@ -47,10 +47,14 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DATABASE_URL: ""
           REDIS_URL: redis://localhost:6379
-          GITHUB_APP_ID: test
-          GITHUB_PRIVATE_KEY_PATH: ./tests/fixtures/test-key.pem
+          GITHUB_APP_ID: ""
+          GITHUB_PRIVATE_KEY: ""
+          GITHUB_PRIVATE_KEY_PATH: ""
           GITHUB_WEBHOOK_SECRET: test-secret
+          GITHUB_PAT: ""
+          GITHUB_OWNER: ""
           GEMINI_API_KEY: test
+          GEMINI_MODEL: gemini-2.5-flash
           LANGCHAIN_API_KEY: test
           LANGCHAIN_TRACING_V2: "false"
         run: pytest tests/ -v
