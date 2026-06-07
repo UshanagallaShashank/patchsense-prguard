@@ -1,131 +1,130 @@
-.PHONY: install dev test lint typecheck build clean up down logs help
-.PHONY: be-install be-dev be-test be-lint be-typecheck be-migrate be-worker
-.PHONY: fe-install fe-dev fe-test fe-build fe-typecheck fe-preview
+.PHONY: help
+.PHONY: install dev-be dev-fe test test-cov lint lint-fix typecheck build preview
+.PHONY: migrate migrate-down migrate-gen worker
+.PHONY: up up-build down logs clean
+
+PYTHON     := python3.11
+VENV       := backend/.venv
+PIP        := $(VENV)/bin/pip
+PYTEST     := $(VENV)/bin/pytest
+RUFF       := $(VENV)/bin/ruff
+MYPY       := $(VENV)/bin/mypy
+ALEMBIC    := $(VENV)/bin/alembic
+UVICORN    := $(VENV)/bin/uvicorn
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+
+## install       install all backend + frontend dependencies
+install:
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip -q
+	$(PIP) install -r backend/requirements.txt -q
+	$(PIP) install ruff "mypy[pydantic]" pytest pytest-asyncio -q
+	cd frontend && npm ci
+
+# ── Dev servers ───────────────────────────────────────────────────────────────
+
+## dev-be         start FastAPI backend with hot-reload on :8000
+dev-be:
+	cd backend && $(abspath $(UVICORN)) main:app --host 0.0.0.0 --port 8000 --reload
+
+## dev-fe         start Vite frontend dev server on :5173
+dev-fe:
+	cd frontend && npm run dev
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+
+## test           run backend pytest + frontend vitest
+test:
+	cd backend && $(abspath $(PYTEST)) tests/ -v
+	cd frontend && npm test -- --run
+
+## test-be        run backend tests only
+test-be:
+	cd backend && $(abspath $(PYTEST)) tests/ -v
+
+## test-fe        run frontend tests only
+test-fe:
+	cd frontend && npm test -- --run
+
+## test-cov       run both test suites with coverage
+test-cov:
+	cd backend && $(abspath $(PYTEST)) tests/ -v --cov=app --cov-report=term-missing
+	cd frontend && npm test -- --run --coverage
+
+# ── Lint & types ──────────────────────────────────────────────────────────────
+
+## lint           lint backend with ruff
+lint:
+	cd backend && $(abspath $(RUFF)) check .
+
+## lint-fix       lint backend and auto-fix safe issues
+lint-fix:
+	cd backend && $(abspath $(RUFF)) check . --fix
+
+## typecheck      mypy backend + tsc frontend
+typecheck:
+	cd backend && $(abspath $(MYPY)) app --config-file mypy.ini
+	cd frontend && npx tsc --noEmit
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+## build          production build of the frontend
+build:
+	cd frontend && npm run build
+
+## preview        preview the production frontend build
+preview:
+	cd frontend && npm run preview
+
+# ── Database / migrations ─────────────────────────────────────────────────────
+
+## migrate        apply all pending alembic migrations
+migrate:
+	cd backend && $(abspath $(ALEMBIC)) upgrade head
+
+## migrate-down   rollback the last migration
+migrate-down:
+	cd backend && $(abspath $(ALEMBIC)) downgrade -1
+
+## migrate-gen    generate a new migration  (usage: make migrate-gen msg="add column")
+migrate-gen:
+	cd backend && $(abspath $(ALEMBIC)) revision --autogenerate -m "$(msg)"
+
+# ── Worker ────────────────────────────────────────────────────────────────────
+
+## worker         start the ARQ background worker
+worker:
+	cd backend && $(PYTHON) worker.py
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
-## up: start all services via docker-compose (api, worker, redis, db)
+## up             start all services via docker-compose
 up:
 	docker-compose up
 
-## up-build: build images and start all services
+## up-build       rebuild images and start all services
 up-build:
 	docker-compose up --build
 
-## down: stop and remove all containers
+## down           stop and remove all containers
 down:
 	docker-compose down
 
-## logs: tail logs from all running containers
+## logs           tail logs from all running containers
 logs:
 	docker-compose logs -f
 
-# ── Aggregate ─────────────────────────────────────────────────────────────────
+# ── Clean ─────────────────────────────────────────────────────────────────────
 
-## install: install backend + frontend dependencies
-install: be-install fe-install
-
-## test: run backend + frontend tests
-test: be-test fe-test
-
-## lint: lint backend code
-lint: be-lint
-
-## typecheck: type-check backend + frontend
-typecheck: be-typecheck fe-typecheck
-
-## build: build frontend for production
-build: fe-build
-
-## clean: remove all build artifacts and caches
-clean: be-clean fe-clean
-
-# ── Backend ───────────────────────────────────────────────────────────────────
-
-## be-install: install backend Python dependencies
-be-install:
-	$(MAKE) -C backend install
-
-## be-dev: start backend FastAPI dev server
-be-dev:
-	$(MAKE) -C backend dev
-
-## be-test: run backend pytest suite
-be-test:
-	$(MAKE) -C backend test
-
-## be-test-cov: run backend tests with coverage
-be-test-cov:
-	$(MAKE) -C backend test-cov
-
-## be-lint: run ruff on backend code
-be-lint:
-	$(MAKE) -C backend lint
-
-## be-lint-fix: run ruff with auto-fix on backend
-be-lint-fix:
-	$(MAKE) -C backend lint-fix
-
-## be-typecheck: run mypy on backend code
-be-typecheck:
-	$(MAKE) -C backend typecheck
-
-## be-migrate: apply all pending database migrations
-be-migrate:
-	$(MAKE) -C backend migrate
-
-## be-migrate-down: rollback last migration
-be-migrate-down:
-	$(MAKE) -C backend migrate-down
-
-## be-migrate-gen msg="...": generate a new migration
-be-migrate-gen:
-	$(MAKE) -C backend migrate-gen msg="$(msg)"
-
-## be-worker: start the ARQ background worker
-be-worker:
-	$(MAKE) -C backend worker
-
-## be-clean: remove backend venv and caches
-be-clean:
-	$(MAKE) -C backend clean
-
-# ── Frontend ──────────────────────────────────────────────────────────────────
-
-## fe-install: install frontend npm dependencies
-fe-install:
-	$(MAKE) -C frontend install
-
-## fe-dev: start Vite dev server
-fe-dev:
-	$(MAKE) -C frontend dev
-
-## fe-test: run Vitest tests
-fe-test:
-	$(MAKE) -C frontend test
-
-## fe-test-cov: run Vitest with coverage
-fe-test-cov:
-	$(MAKE) -C frontend test-cov
-
-## fe-build: production build
-fe-build:
-	$(MAKE) -C frontend build
-
-## fe-preview: preview production build
-fe-preview:
-	$(MAKE) -C frontend preview
-
-## fe-typecheck: run tsc --noEmit
-fe-typecheck:
-	$(MAKE) -C frontend typecheck
-
-## fe-clean: remove frontend build artifacts
-fe-clean:
-	$(MAKE) -C frontend clean
+## clean          remove backend venv, caches, and frontend build artifacts
+clean:
+	rm -rf $(VENV) backend/__pycache__ backend/.pytest_cache backend/.mypy_cache backend/.ruff_cache
+	find backend -name "*.pyc" -delete
+	rm -rf frontend/dist frontend/node_modules frontend/.vite
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 
-## help: list all available targets
+## help           list all available targets
 help:
-	@grep -E '^## ' Makefile | sed 's/## //'
+	@grep -E '^## ' Makefile | column -t -s ' '
