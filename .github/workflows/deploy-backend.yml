@@ -1,0 +1,46 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push image
+        run: |
+          gcloud builds submit backend/ \
+            --tag gcr.io/${{ secrets.GCP_PROJECT }}/patchsense-api
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy patchsense-api \
+            --image gcr.io/${{ secrets.GCP_PROJECT }}/patchsense-api \
+            --platform managed \
+            --region asia-south1 \
+            --allow-unauthenticated \
+            --set-env-vars GITHUB_APP_ID=${{ secrets.GITHUB_APP_ID }},\
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},\
+          DATABASE_URL=${{ secrets.DATABASE_URL }},\
+          REDIS_URL=${{ secrets.REDIS_URL }},\
+          GITHUB_WEBHOOK_SECRET=${{ secrets.GITHUB_WEBHOOK_SECRET }},\
+          LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY }},\
+          LANGCHAIN_TRACING_V2=true,\
+          LANGCHAIN_PROJECT=patchsense-prguard
