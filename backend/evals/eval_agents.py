@@ -12,6 +12,7 @@ Set GITHUB_PAT in .env for higher rate limits (optional but recommended).
 """
 import asyncio
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -22,40 +23,45 @@ import httpx
 GITHUB_API = "https://api.github.com"
 
 # ---------------------------------------------------------------------------
-# Real PR examples from public repos covering known issues in each category
+# Real PRs from the patchsense-prguard repo — actual production code changes
 # ---------------------------------------------------------------------------
+REPO = "UshanagallaShashank/patchsense-prguard"
+
 EVAL_CASES = [
     {
-        "name": "security: hardcoded creds + injection",
-        "repo": "juice-shop/juice-shop",
-        "pr": 2228,
+        "name": "PR #7 — security agent implementation (LangChain + Gemini)",
+        "repo": REPO,
+        "pr": 7,
         "expect_agent": "security",
-        "expect_min_findings": 0,
-        "notes": "OWASP juice-shop — public intentionally-vulnerable app PRs",
+        "notes": "Adds the security agent — agents themselves should be reviewed for security",
     },
     {
-        "name": "performance: N+1 query pattern",
-        "repo": "encode/django-rest-framework",
-        "pr": 9001,
+        "name": "PR #8 — performance agent implementation",
+        "repo": REPO,
+        "pr": 8,
         "expect_agent": "performance",
-        "expect_min_findings": 0,
-        "notes": "DRF PR — may contain DB query patterns",
+        "notes": "Adds performance agent — may flag its own patterns",
     },
     {
-        "name": "style: naming + dead code",
-        "repo": "psf/black",
-        "pr": 4000,
+        "name": "PR #10 — orchestrator + deduplicator + merger",
+        "repo": REPO,
+        "pr": 10,
         "expect_agent": "style",
-        "expect_min_findings": 0,
-        "notes": "Black formatter PR — style issues possible",
+        "notes": "Fan-out + ranking logic — good style/quality target",
     },
     {
-        "name": "clean diff: no issues expected",
-        "repo": "tiangolo/fastapi",
-        "pr": 11000,
+        "name": "PR #15 — reviews API endpoints (SQLAlchemy + FastAPI)",
+        "repo": REPO,
+        "pr": 15,
+        "expect_agent": "performance",
+        "notes": "DB query patterns + joinedload — performance agent target",
+    },
+    {
+        "name": "PR #16 — Supabase client integration",
+        "repo": REPO,
+        "pr": 16,
         "expect_agent": None,
-        "expect_min_findings": 0,
-        "notes": "FastAPI docs PR — typically clean",
+        "notes": "Clean refactor to supabase-py — should be low noise",
     },
 ]
 
@@ -143,9 +149,6 @@ def print_report(results: list[EvalResult]) -> None:
 
 
 async def main() -> None:
-    import os
-    import sys
-
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
     from dotenv import load_dotenv

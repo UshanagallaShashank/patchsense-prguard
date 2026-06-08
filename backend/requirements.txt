@@ -9,7 +9,7 @@ alembic==1.13.1
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 supabase==2.31.0
-websockets==15.0.1
+websockets==14.2
 
 # Queue
 arq==0.25.0
