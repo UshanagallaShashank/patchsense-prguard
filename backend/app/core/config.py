@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     langchain_tracing_v2: str = "true"
     supabase_url: str
     supabase_key: str
+    supabase_secret_key: str = ""
     database_url: str = ""
     redis_url: str = "redis://localhost:6379"
     env: str = "development"
