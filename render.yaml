@@ -2,8 +2,8 @@ services:
   - type: web
     name: patchsense-backend
     runtime: docker
-    dockerfilePath: backend/Dockerfile
-    dockerContext: backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     plan: free
     envVars:
       - key: SUPABASE_URL
