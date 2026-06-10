@@ -1,46 +1,26 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@import "tailwindcss";
 
-:root {
-  --bg:        #090c10;
-  --surface:   #0d1117;
-  --card:      #161b22;
-  --border:    #21262d;
-  --border2:   #30363d;
-  --text:      #e6edf3;
-  --muted:     #8b949e;
-  --accent:    #58a6ff;
-  --green:     #3fb950;
-  --red:       #f85149;
-  --orange:    #fb8f44;
-  --yellow:    #d29922;
-  --purple:    #bc8cff;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
+  background: #090c10;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 
-#root { min-height: 100vh; display: flex; flex-direction: column; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
 
-/* scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-/* pulse animation for pending/running */
-@keyframes pulse {
+@keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.3; }
 }
-
-/* slide-down for expanded findings */
-@keyframes slideDown {
+@keyframes slide-down {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.findings-list { animation: slideDown 0.18s ease; }
+.animate-pulse-dot  { animation: pulse-dot  1.4s ease-in-out infinite; }
+.animate-slide-down { animation: slide-down 0.18s ease; }
