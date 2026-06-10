@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from fastapi import APIRouter, BackgroundTasks, Request, Response, HTTPException
 
 from app.core.hmac_verify import verify_webhook_signature
@@ -30,14 +32,14 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
 
     elif event.action == "opened":
         # First time this PR is opened — create a fresh review record
-        review = client.table("reviews").insert({
+        review = cast(dict[str, Any], client.table("reviews").insert({
             "repo_full_name": event.repo_full_name,
             "pr_number": event.pr_number,
             "pr_title": event.pr_title,
             "pr_state": "open",
             "status": "pending",
-        }).execute().data[0]
-        _enqueue(background_tasks, client, event, review["id"])
+        }).execute().data[0])
+        _enqueue(background_tasks, client, event, str(review["id"]))
 
     elif event.action in {"synchronize", "reopened"}:
         # New commits pushed — reuse the existing review record, clear old findings
@@ -52,7 +54,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
             .data
         )
         if existing:
-            review_id = existing[0]["id"]
+            review_id: str = str(cast(dict[str, Any], existing[0])["id"])
             # Clear stale findings and reset status
             client.table("findings").delete().eq("review_id", review_id).execute()
             client.table("reviews").update({
@@ -63,13 +65,13 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
             }).eq("id", review_id).execute()
         else:
             # No prior record (e.g. webhook missed the open event) — create one
-            review_id = client.table("reviews").insert({
+            review_id = str(cast(dict[str, Any], client.table("reviews").insert({
                 "repo_full_name": event.repo_full_name,
                 "pr_number": event.pr_number,
                 "pr_title": event.pr_title,
                 "pr_state": "open",
                 "status": "pending",
-            }).execute().data[0]["id"]
+            }).execute().data[0])["id"])
 
         ctx = {"github_pat": settings.github_pat}
         background_tasks.add_task(
