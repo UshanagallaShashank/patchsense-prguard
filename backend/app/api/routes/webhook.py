@@ -19,12 +19,23 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
         raise HTTPException(status_code=401, detail="Invalid signature")
     payload = await request.json()
     event = parse_pr_event(payload)
-    if event and event.action in REVIEW_TRIGGER_ACTIONS:
-        client = get_supabase_admin()
+    if not event:
+        return Response(status_code=200)
+
+    client = get_supabase_admin()
+
+    if event.action == "closed":
+        # Mark all reviews for this PR as merged or closed
+        client.table("reviews").update({
+            "pr_state": event.pr_state,
+        }).eq("repo_full_name", event.repo_full_name).eq("pr_number", event.pr_number).execute()
+
+    elif event.action in REVIEW_TRIGGER_ACTIONS:
         review = client.table("reviews").insert({
             "repo_full_name": event.repo_full_name,
             "pr_number": event.pr_number,
             "pr_title": event.pr_title,
+            "pr_state": "open",
             "status": "pending",
         }).execute().data[0]
         ctx = {"github_pat": settings.github_pat}
@@ -32,4 +43,5 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
             run_review_job,
             ctx, event.repo_full_name, event.pr_number, review["id"],
         )
+
     return Response(status_code=200)

@@ -1,5 +1,6 @@
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 export type ReviewStatus = "pending" | "running" | "completed" | "failed";
+export type PrState = "open" | "closed" | "merged";
 
 export interface Finding {
   id: string;
@@ -16,6 +17,7 @@ export interface Review {
   repo_full_name: string;
   pr_number: number;
   pr_title: string | null;
+  pr_state: PrState | null;
   status: ReviewStatus;
   created_at: string;
   completed_at: string | null;

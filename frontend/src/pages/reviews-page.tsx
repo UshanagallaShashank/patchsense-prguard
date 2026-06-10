@@ -180,6 +180,12 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-[#8b949e] truncate">{r.repo_full_name}</span>
               <span className="text-xs text-[#8b949e] bg-[#21262d] rounded-full px-2 py-0.5">PR #{r.pr_number}</span>
+              {r.pr_state === "merged" && (
+                <span className="text-[10px] font-bold text-purple-400 bg-purple-950/40 border border-purple-900/40 rounded-full px-2 py-0.5">⇢ Merged</span>
+              )}
+              {r.pr_state === "closed" && (
+                <span className="text-[10px] font-bold text-red-400 bg-red-950/40 border border-red-900/40 rounded-full px-2 py-0.5">✕ Closed</span>
+              )}
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${st.dot} ${st.pulse ? "animate-pulse-dot" : ""}`} />
                 <span className={`text-[11px] font-semibold ${st.text}`}>{st.label}</span>
@@ -234,6 +240,7 @@ export function ReviewsPage() {
   const [page, setPage]                   = useState(1);
   const [agentFilter, setAgentFilter]     = useState("all");
   const [statusFilter, setStatusFilter]   = useState("all");
+  const [prStateFilter, setPrStateFilter] = useState<"open" | "merged" | "all">("open");
   const [showSettings, setShowSettings]   = useState(false);
   const { reviews, loading, error, refresh } = useReviews(page);
 
@@ -243,9 +250,19 @@ export function ReviewsPage() {
   const hasActive = reviews.some(r => r.status === "pending" || r.status === "running");
   const hasFailed = reviews.some(r => r.status === "failed");
 
-  const filteredReviews = statusFilter === "all"
+  // Old rows without pr_state are treated as "open" (they predate the field)
+  const byPrState = prStateFilter === "all"
     ? reviews
-    : reviews.filter(r => r.status === statusFilter);
+    : prStateFilter === "open"
+      ? reviews.filter(r => !r.pr_state || r.pr_state === "open")
+      : reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed");
+
+  const filteredReviews = statusFilter === "all"
+    ? byPrState
+    : byPrState.filter(r => r.status === statusFilter);
+
+  const openCount   = reviews.filter(r => !r.pr_state || r.pr_state === "open").length;
+  const mergedCount = reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed").length;
 
   return (
     <div className="min-h-screen bg-[#090c10]">
@@ -271,6 +288,32 @@ export function ReviewsPage() {
       </header>
 
       <main className="max-w-[900px] mx-auto px-5 py-7">
+
+        {/* PR state toggle — Open / Merged / All */}
+        {!loading && reviews.length > 0 && (
+          <div className="flex mb-6 bg-[#0d1117] border border-[#21262d] rounded-xl overflow-hidden w-fit">
+            {([
+              { key: "open",   label: "Open",    icon: "◉", cls: "text-green-400 bg-green-950/20"  },
+              { key: "merged", label: "Merged",  icon: "⇢", cls: "text-purple-400 bg-purple-950/20" },
+              { key: "all",    label: "All PRs", icon: "≡", cls: "text-[#8b949e] bg-[#8b949e]/10"  },
+            ] as const).map((t, i) => {
+              const count = t.key === "all" ? reviews.length : t.key === "open"
+                ? reviews.filter(r => !r.pr_state || r.pr_state === "open").length
+                : reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed").length;
+              const active = prStateFilter === t.key;
+              return (
+                <button key={t.key} onClick={() => setPrStateFilter(t.key)}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${i < 2 ? "border-r border-[#21262d]" : ""} ${active ? t.cls : "text-[#8b949e] hover:text-[#e6edf3]"}`}
+                >
+                  <span className="text-xs">{t.icon}</span>
+                  {t.label}
+                  <span className={`text-[10px] font-bold rounded-full px-1.5 ${active ? "bg-white/10" : "bg-[#21262d] text-[#484f58]"}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Failed banner */}
         {hasFailed && (
           <div className="mb-5 flex items-center gap-3 bg-red-950/30 border border-red-900/50 rounded-xl px-4 py-3">
