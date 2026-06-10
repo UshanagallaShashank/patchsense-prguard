@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-import httpx
-from supabase import create_client
+import httpx  # noqa: E402
+from supabase import create_client  # noqa: E402
 
 
 GITHUB_API = "https://api.github.com"
