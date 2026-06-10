@@ -15,6 +15,7 @@ export interface Review {
   id: string;
   repo_full_name: string;
   pr_number: number;
+  pr_title: string | null;
   status: ReviewStatus;
   created_at: string;
   completed_at: string | null;

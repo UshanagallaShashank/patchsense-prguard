@@ -24,6 +24,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
         review = client.table("reviews").insert({
             "repo_full_name": event.repo_full_name,
             "pr_number": event.pr_number,
+            "pr_title": event.pr_title,
             "status": "pending",
         }).execute().data[0]
         ctx = {"github_pat": settings.github_pat}

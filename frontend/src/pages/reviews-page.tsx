@@ -176,8 +176,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-xl shrink-0 bg-gradient-to-br from-blue-950 to-blue-900/50 border border-blue-900/40 flex items-center justify-center text-base">🔀</div>
           <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[#e6edf3] leading-snug mb-1">{r.pr_title ?? `PR #${r.pr_number}`}</p>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-[#e6edf3] truncate">{r.repo_full_name}</span>
+              <span className="text-xs text-[#8b949e] truncate">{r.repo_full_name}</span>
               <span className="text-xs text-[#8b949e] bg-[#21262d] rounded-full px-2 py-0.5">PR #{r.pr_number}</span>
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${st.dot} ${st.pulse ? "animate-pulse-dot" : ""}`} />

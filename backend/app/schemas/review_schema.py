@@ -22,6 +22,7 @@ class ReviewOut(BaseModel):
     id: uuid.UUID
     repo_full_name: str
     pr_number: int
+    pr_title: str | None = None
     status: str
     created_at: datetime
     completed_at: datetime | None
