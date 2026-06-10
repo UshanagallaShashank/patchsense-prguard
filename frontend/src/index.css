@@ -1,17 +1,67 @@
 @import "tailwindcss";
 
+@layer base {
+  :root {
+    --background: 220 13% 5%;
+    --foreground: 213 27% 92%;
+    --card: 215 14% 7%;
+    --card-foreground: 213 27% 92%;
+    --popover: 215 14% 7%;
+    --popover-foreground: 213 27% 92%;
+    --primary: 212 100% 67%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 215 19% 11%;
+    --secondary-foreground: 213 27% 92%;
+    --muted: 215 19% 11%;
+    --muted-foreground: 215 16% 57%;
+    --accent: 215 19% 11%;
+    --accent-foreground: 213 27% 92%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 213 27% 92%;
+    --border: 215 19% 15%;
+    --input: 215 19% 15%;
+    --ring: 212 100% 67%;
+    --radius: 0.5rem;
+  }
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #090c10;
-  color: #e6edf3;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
 
 ::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
