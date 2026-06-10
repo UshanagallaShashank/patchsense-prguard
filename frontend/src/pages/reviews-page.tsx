@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, AlertTriangle, Shield, Zap, Sparkles } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
 import { useReviews } from "../hooks/use-reviews"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,14 @@ const AGENT = {
   performance: { icon: Zap,      label: "Performance", color: "text-yellow-400", bg: "bg-yellow-950/40", border: "border-yellow-900/50" },
   style:       { icon: Sparkles, label: "Style",       color: "text-purple-400", bg: "bg-purple-950/40", border: "border-purple-900/50" },
 } as const
+
+const SEV_COLOR: Record<string, string> = {
+  critical: "text-red-400",
+  high:     "text-orange-400",
+  medium:   "text-yellow-400",
+  low:      "text-green-400",
+  info:     "text-blue-400",
+}
 
 const STATUS: Record<ReviewStatus, { dot: string; text: string; label: string; pulse: boolean }> = {
   completed: { dot: "bg-green-500",  text: "text-green-400",  label: "Completed", pulse: false },
@@ -210,8 +218,8 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                 </div>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {Object.entries(sevCounts).map(([s, n]) => (
-                    <span key={s} className="flex items-center gap-1 text-[11px]">
-                      {n} <SeverityBadge severity={s} />
+                    <span key={s} className={cn("text-[11px] font-semibold", SEV_COLOR[s] ?? "text-muted-foreground")}>
+                      {n} {s}
                     </span>
                   ))}
                   {Object.entries(agentCounts).map(([ag, n]) => {
@@ -364,15 +372,15 @@ export function ReviewsPage() {
         {/* Stats */}
         {!loading && reviews.length > 0 && (
           <div className="grid grid-cols-4 gap-3 mb-7">
-            {[
-              { label: "Reviews",  value: reviews.length, cls: "text-foreground", icon: "📋" },
-              { label: "Findings", value: total,          cls: "text-primary",    icon: "🔍" },
-              { label: "Critical", value: critical,       cls: "text-red-400",    icon: "🚨" },
-              { label: "High",     value: high,           cls: "text-orange-400", icon: "⚠️" },
-            ].map(s => (
+            {([
+              { label: "Reviews",  value: reviews.length, cls: "text-foreground", icon: ClipboardList, iconCls: "text-muted-foreground" },
+              { label: "Findings", value: total,          cls: "text-primary",    icon: ScanSearch,    iconCls: "text-primary"          },
+              { label: "Critical", value: critical,       cls: "text-red-400",    icon: Flame,         iconCls: "text-red-400"          },
+              { label: "High",     value: high,           cls: "text-orange-400", icon: AlertTriangle, iconCls: "text-orange-400"       },
+            ] as const).map(s => (
               <Card key={s.label}>
                 <CardContent className="p-4">
-                  <div className="text-xl mb-2">{s.icon}</div>
+                  <s.icon className={cn("h-5 w-5 mb-2", s.iconCls)} />
                   <div className={cn("text-2xl font-bold leading-none", s.cls)}>{s.value}</div>
                   <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
                 </CardContent>
@@ -410,8 +418,12 @@ export function ReviewsPage() {
         {!loading && reviews.length > 0 && (
           <Tabs value={agentFilter} onValueChange={setAgentFilter} className="mb-5">
             <TabsList className="h-8 gap-1 bg-transparent p-0">
+              <TabsTrigger value="all"
+                className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+              >
+                <LayoutGrid className="h-3 w-3" /> All
+              </TabsTrigger>
               {([
-                { key: "all",         label: "All",         icon: null     },
                 { key: "security",    label: "Security",    icon: Shield   },
                 { key: "performance", label: "Performance", icon: Zap      },
                 { key: "style",       label: "Style",       icon: Sparkles },
@@ -419,7 +431,7 @@ export function ReviewsPage() {
                 <TabsTrigger key={f.key} value={f.key}
                   className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
                 >
-                  {f.icon && <f.icon className="h-3 w-3" />}
+                  <f.icon className="h-3 w-3" />
                   {f.label}
                 </TabsTrigger>
               ))}
