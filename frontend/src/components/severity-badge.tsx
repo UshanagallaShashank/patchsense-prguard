@@ -1,30 +1,16 @@
 import type { Severity } from "../types/review";
 
-const CFG: Record<Severity, { bg: string; color: string; glow: string }> = {
-  critical: { bg: "#2d1117", color: "#f85149", glow: "#f8514933" },
-  high:     { bg: "#2d1b0e", color: "#fb8f44", glow: "#fb8f4433" },
-  medium:   { bg: "#271d05", color: "#d29922", glow: "#d2992233" },
-  low:      { bg: "#0d2114", color: "#3fb950", glow: "#3fb95033" },
-  info:     { bg: "#0d1a2d", color: "#58a6ff", glow: "#58a6ff33" },
+const CLS: Record<Severity, string> = {
+  critical: "text-red-400 bg-red-950/60 border-red-900/70",
+  high:     "text-orange-400 bg-orange-950/60 border-orange-900/70",
+  medium:   "text-yellow-400 bg-yellow-950/60 border-yellow-900/70",
+  low:      "text-green-400 bg-green-950/60 border-green-900/70",
+  info:     "text-blue-400 bg-blue-950/60 border-blue-900/70",
 };
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
-  const c = CFG[severity] ?? CFG.info;
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      background: c.bg,
-      color: c.color,
-      border: `1px solid ${c.glow}`,
-      borderRadius: 6,
-      fontSize: 10,
-      fontWeight: 700,
-      letterSpacing: "0.08em",
-      padding: "2px 8px",
-      textTransform: "uppercase",
-      whiteSpace: "nowrap",
-      boxShadow: `0 0 8px ${c.glow}`,
-    }}>
+    <span className={`inline-flex items-center border rounded px-1.5 py-0.5 text-[10px] font-bold tracking-widest uppercase whitespace-nowrap ${CLS[severity] ?? CLS.info}`}>
       {severity}
     </span>
   );
