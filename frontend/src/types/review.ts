@@ -1,5 +1,5 @@
-export type Severity = "critical" | "high" | "medium" | "info";
-export type ReviewStatus = "pending" | "running" | "done" | "failed";
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+export type ReviewStatus = "pending" | "running" | "completed" | "failed";
 
 export interface Finding {
   id: string;
