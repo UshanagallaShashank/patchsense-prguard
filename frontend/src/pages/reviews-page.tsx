@@ -261,9 +261,6 @@ export function ReviewsPage() {
     ? byPrState
     : byPrState.filter(r => r.status === statusFilter);
 
-  const openCount   = reviews.filter(r => !r.pr_state || r.pr_state === "open").length;
-  const mergedCount = reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed").length;
-
   return (
     <div className="min-h-screen bg-[#090c10]">
       {/* Navbar */}
@@ -291,23 +288,23 @@ export function ReviewsPage() {
 
         {/* PR state toggle — Open / Merged / All */}
         {!loading && reviews.length > 0 && (
-          <div className="flex mb-6 bg-[#0d1117] border border-[#21262d] rounded-xl overflow-hidden w-fit">
+          <div className="flex gap-2 mb-6 flex-wrap">
             {([
-              { key: "open",   label: "Open",    icon: "◉", cls: "text-green-400 bg-green-950/20"  },
-              { key: "merged", label: "Merged",  icon: "⇢", cls: "text-purple-400 bg-purple-950/20" },
-              { key: "all",    label: "All PRs", icon: "≡", cls: "text-[#8b949e] bg-[#8b949e]/10"  },
-            ] as const).map((t, i) => {
+              { key: "open",   label: "Open",    dot: "bg-green-500",  active: "border-green-700 bg-green-950/40 text-green-400"   },
+              { key: "merged", label: "Merged",  dot: "bg-purple-500", active: "border-purple-700 bg-purple-950/40 text-purple-400" },
+              { key: "all",    label: "All PRs", dot: null,            active: "border-[#8b949e] bg-[#8b949e]/10 text-[#8b949e]"   },
+            ] as const).map(t => {
               const count = t.key === "all" ? reviews.length : t.key === "open"
                 ? reviews.filter(r => !r.pr_state || r.pr_state === "open").length
                 : reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed").length;
-              const active = prStateFilter === t.key;
+              const isActive = prStateFilter === t.key;
               return (
                 <button key={t.key} onClick={() => setPrStateFilter(t.key)}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${i < 2 ? "border-r border-[#21262d]" : ""} ${active ? t.cls : "text-[#8b949e] hover:text-[#e6edf3]"}`}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${isActive ? t.active : "border-[#21262d] text-[#8b949e] hover:border-[#30363d] hover:text-[#e6edf3]"}`}
                 >
-                  <span className="text-xs">{t.icon}</span>
+                  {t.dot && <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />}
                   {t.label}
-                  <span className={`text-[10px] font-bold rounded-full px-1.5 ${active ? "bg-white/10" : "bg-[#21262d] text-[#484f58]"}`}>{count}</span>
+                  <span className={`text-[10px] font-bold rounded-full px-1.5 min-w-[18px] text-center ${isActive ? "bg-white/10" : "bg-[#21262d] text-[#484f58]"}`}>{count}</span>
                 </button>
               );
             })}
