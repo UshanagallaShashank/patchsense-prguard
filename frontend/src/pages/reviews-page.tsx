@@ -26,6 +26,21 @@ const SEV_CHIP: Record<string, string> = {
   info:     "text-blue-400 bg-blue-950/50 border-blue-900/60",
 };
 
+const STATUS_FILTERS = [
+  { key: "all",       label: "All",       active: "border-[#8b949e] bg-[#8b949e]/10 text-[#8b949e]" },
+  { key: "pending",   label: "Pending",   active: "border-yellow-700 bg-yellow-950/40 text-yellow-400" },
+  { key: "running",   label: "Running",   active: "border-blue-700 bg-blue-950/40 text-blue-400"    },
+  { key: "completed", label: "Completed", active: "border-green-700 bg-green-950/40 text-green-400" },
+  { key: "failed",    label: "Failed",    active: "border-red-700 bg-red-950/40 text-red-400"       },
+];
+
+const AGENT_FILTERS = [
+  { key: "all",         label: "All",         icon: "◈" },
+  { key: "security",    label: "Security",    icon: "🔒" },
+  { key: "performance", label: "Performance", icon: "⚡" },
+  { key: "style",       label: "Style",       icon: "✦"  },
+];
+
 function timeAgo(iso: string) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60)    return "just now";
@@ -215,9 +230,10 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
 /* ── ReviewsPage ─────────────────────────────────────────────── */
 
 export function ReviewsPage() {
-  const [page, setPage]             = useState(1);
-  const [agentFilter, setFilter]    = useState("all");
-  const [showSettings, setSettings] = useState(false);
+  const [page, setPage]                   = useState(1);
+  const [agentFilter, setAgentFilter]     = useState("all");
+  const [statusFilter, setStatusFilter]   = useState("all");
+  const [showSettings, setShowSettings]   = useState(false);
   const { reviews, loading, error, refresh } = useReviews(page);
 
   const total     = reviews.reduce((s, r) => s + r.findings.length, 0);
@@ -226,12 +242,9 @@ export function ReviewsPage() {
   const hasActive = reviews.some(r => r.status === "pending" || r.status === "running");
   const hasFailed = reviews.some(r => r.status === "failed");
 
-  const FILTERS = [
-    { key: "all",         label: "All",         icon: "◈" },
-    { key: "security",    label: "Security",    icon: "🔒" },
-    { key: "performance", label: "Performance", icon: "⚡" },
-    { key: "style",       label: "Style",       icon: "✦"  },
-  ];
+  const filteredReviews = statusFilter === "all"
+    ? reviews
+    : reviews.filter(r => r.status === statusFilter);
 
   return (
     <div className="min-h-screen bg-[#090c10]">
@@ -249,7 +262,7 @@ export function ReviewsPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={refresh} className="border border-[#30363d] rounded-lg px-3 py-1.5 text-sm text-[#8b949e] hover:text-[#e6edf3] transition-colors">↻</button>
-            <button onClick={() => setSettings(true)} className="flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg px-3 py-1.5 text-sm text-[#e6edf3] font-medium hover:border-[#8b949e] transition-colors">
+            <button onClick={() => setShowSettings(true)} className="flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg px-3 py-1.5 text-sm text-[#e6edf3] font-medium hover:border-[#8b949e] transition-colors">
               ⚙️ Connect Repo
             </button>
           </div>
@@ -286,11 +299,29 @@ export function ReviewsPage() {
           </div>
         )}
 
-        {/* Agent filters */}
+        {/* Status filter tabs */}
+        {!loading && reviews.length > 0 && (
+          <div className="flex gap-2 mb-2.5 flex-wrap">
+            {STATUS_FILTERS.map(f => {
+              const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length;
+              const isActive = statusFilter === f.key;
+              return (
+                <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${isActive ? f.active : "border-[#21262d] text-[#8b949e] hover:border-[#30363d]"}`}
+                >
+                  {f.label}
+                  <span className={`text-[10px] font-bold rounded-full px-1.5 ${isActive ? "bg-white/10" : "bg-[#21262d] text-[#484f58]"}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Agent filter tabs */}
         {!loading && reviews.length > 0 && (
           <div className="flex gap-2 mb-5 flex-wrap">
-            {FILTERS.map(f => (
-              <button key={f.key} onClick={() => setFilter(f.key)}
+            {AGENT_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setAgentFilter(f.key)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${agentFilter === f.key ? "border-blue-700 bg-blue-950/50 text-blue-400" : "border-[#21262d] text-[#8b949e] hover:border-[#30363d] hover:text-[#e6edf3]"}`}
               >
                 {f.icon} {f.label}
@@ -311,13 +342,20 @@ export function ReviewsPage() {
             <span className="text-5xl mb-4">📭</span>
             <p className="text-base text-[#8b949e] mb-2">No reviews yet</p>
             <p className="text-sm mb-6">Open a PR on a connected repo to trigger a review</p>
-            <button onClick={() => setSettings(true)} className="border border-[#30363d] bg-[#161b22] rounded-lg px-4 py-2 text-sm text-blue-400 hover:border-blue-800 transition-colors">
+            <button onClick={() => setShowSettings(true)} className="border border-[#30363d] bg-[#161b22] rounded-lg px-4 py-2 text-sm text-blue-400 hover:border-blue-800 transition-colors">
               ⚙️ Connect a Repo
             </button>
           </div>
         )}
 
-        {!loading && !error && reviews.map(r => <ReviewCard key={r.id} r={r} agentFilter={agentFilter} />)}
+        {!loading && !error && filteredReviews.length === 0 && reviews.length > 0 && (
+          <div className="flex flex-col items-center py-12 text-[#484f58]">
+            <span className="text-3xl mb-3">🔍</span>
+            <p className="text-sm text-[#8b949e]">No {statusFilter} reviews</p>
+          </div>
+        )}
+
+        {!loading && !error && filteredReviews.map(r => <ReviewCard key={r.id} r={r} agentFilter={agentFilter} />)}
 
         {!loading && reviews.length > 0 && (
           <div className="flex justify-center gap-2.5 mt-7">
@@ -335,7 +373,7 @@ export function ReviewsPage() {
         )}
       </main>
 
-      {showSettings && <SettingsDrawer onClose={() => setSettings(false)} />}
+      {showSettings && <SettingsDrawer onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
