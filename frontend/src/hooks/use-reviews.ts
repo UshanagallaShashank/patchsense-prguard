@@ -4,6 +4,8 @@ import type { Review } from "../types/review";
 import { fetchReviews } from "../services/api";
 
 const ACTIVE = new Set(["pending", "running"]);
+const FAST_POLL_MS = 4000;
+const SLOW_POLL_MS = 30000;
 
 export function useReviews(page: number) {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -47,15 +49,16 @@ export function useReviews(page: number) {
 
   useEffect(() => { load(true); }, [page]);
 
+  // Fast poll (4s) when any review is active; slow poll (30s) always so new PRs appear
   useEffect(() => {
     const hasActive = reviews.some(r => ACTIVE.has(r.status));
-    if (hasActive) {
-      timer.current = setInterval(() => load(), 4000);
-    } else {
-      if (timer.current) clearInterval(timer.current);
-    }
+    const interval = hasActive ? FAST_POLL_MS : SLOW_POLL_MS;
+
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(() => load(), interval);
+
     return () => { if (timer.current) clearInterval(timer.current); };
-  }, [reviews]);
+  }, [reviews, page]);
 
   return { reviews, loading, error, refresh: () => load() };
 }
