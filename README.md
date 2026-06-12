@@ -131,7 +131,7 @@ create policy "anon_select" on findings for select using (true);
 ## Connecting a repo
 
 1. Go to the repo → **Settings → Webhooks → Add webhook**
-2. Payload URL: `https://patchsense-prguard-1.onrender.com/webhook`
+2. Payload URL: `https://patchsense-prguard-t9ze.onrender.com/webhook`
 3. Content type: `application/json`
 4. Secret: your `GITHUB_WEBHOOK_SECRET`
 5. Events: select **Pull requests** only

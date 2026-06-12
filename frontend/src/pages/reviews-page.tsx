@@ -103,7 +103,7 @@ function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void 
           </CardContent>
         </Card>
 
-        <CopyField label="Webhook URL (deployed)" value="https://patchsense-prguard-1.onrender.com/webhook" hint="Use for production" />
+        <CopyField label="Webhook URL (deployed)" value="https://patchsense-prguard-t9ze.onrender.com/webhook" hint="Use for production" />
         <CopyField label="Webhook Secret" value="patchsense123" hint="Paste into the GitHub webhook secret field" />
 
         <Card className="border-primary/20 bg-primary/5 mt-2">
