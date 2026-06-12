@@ -23,6 +23,8 @@ class ReviewOut(BaseModel):
     repo_full_name: str
     pr_number: int
     pr_title: str | None = None
+    pr_branch: str | None = None
+    author_login: str | None = None
     pr_state: str | None = None  # "open" | "closed" | "merged"
     status: str
     created_at: datetime
