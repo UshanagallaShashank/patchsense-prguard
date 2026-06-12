@@ -87,7 +87,7 @@ def _upsert_review(client: Any, event: Any) -> str | None:
 
     meta = {
         "pr_title": event.pr_title,
-        "pr_branch": event.pr_branch,
+        "head_branch": event.pr_branch,
         "author_login": event.author_login,
     }
 

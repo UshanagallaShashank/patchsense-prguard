@@ -17,7 +17,8 @@ export interface Review {
   repo_full_name: string;
   pr_number: number;
   pr_title: string | null;
-  pr_branch: string | null;
+  head_branch: string | null;
+  author_login: string | null;
   pr_state: PrState | null;
   status: ReviewStatus;
   created_at: string;

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
 import { useReviews } from "../hooks/use-reviews"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
@@ -214,10 +214,16 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   {r.pr_state === "closed" && (
                     <Badge className="text-[10px] text-red-400 bg-red-950/40 border-red-900/40 rounded-full">✕ Closed</Badge>
                   )}
-                  {r.pr_branch && (
+                  {r.head_branch && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
                       <GitBranch className="h-3 w-3 shrink-0" />
-                      {r.pr_branch}
+                      {r.head_branch}
+                    </span>
+                  )}
+                  {r.author_login && (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <User className="h-3 w-3 shrink-0" />
+                      {r.author_login}
                     </span>
                   )}
                   <span className="flex items-center gap-1.5">
@@ -406,7 +412,7 @@ export function ReviewsPage() {
                 { key: "all",       label: "All"       },
                 { key: "pending",   label: "Pending"   },
                 { key: "running",   label: "Running"   },
-                { key: "completed", label: "Completed" },
+                { key: "completed", label: "Reviewed"  },
                 { key: "failed",    label: "Failed"    },
               ].map(f => {
                 const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length
