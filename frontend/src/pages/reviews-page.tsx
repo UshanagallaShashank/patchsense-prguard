@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
 import { useReviews } from "../hooks/use-reviews"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
@@ -29,7 +29,7 @@ const SEV_COLOR: Record<string, string> = {
 }
 
 const STATUS: Record<ReviewStatus, { dot: string; text: string; label: string; pulse: boolean }> = {
-  completed: { dot: "bg-green-500",  text: "text-green-400",  label: "Completed", pulse: false },
+  completed: { dot: "bg-green-500",  text: "text-green-400",  label: "Reviewed",  pulse: false },
   pending:   { dot: "bg-yellow-500", text: "text-yellow-400", label: "Pending",   pulse: true  },
   running:   { dot: "bg-blue-500",   text: "text-blue-400",   label: "Running",   pulse: true  },
   failed:    { dot: "bg-red-500",    text: "text-red-400",    label: "Failed",    pulse: false },
@@ -103,7 +103,7 @@ function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void 
           </CardContent>
         </Card>
 
-        <CopyField label="Webhook URL (deployed)" value="https://patchsense-prguard-1.onrender.com/webhook" hint="Use for production" />
+        <CopyField label="Webhook URL (deployed)" value="https://patchsense-prguard-t9ze.onrender.com/webhook" hint="Use for production" />
         <CopyField label="Webhook Secret" value="patchsense123" hint="Paste into the GitHub webhook secret field" />
 
         <Card className="border-primary/20 bg-primary/5 mt-2">
@@ -205,11 +205,26 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted-foreground truncate">{r.repo_full_name}</span>
                   <Badge variant="secondary" className="text-[10px] rounded-full px-2">PR #{r.pr_number}</Badge>
+                  {(!r.pr_state || r.pr_state === "open") && (
+                    <Badge className="text-[10px] text-green-400 bg-green-950/40 border-green-900/40 rounded-full">● Open</Badge>
+                  )}
                   {r.pr_state === "merged" && (
                     <Badge className="text-[10px] text-purple-400 bg-purple-950/40 border-purple-900/40 rounded-full">⇢ Merged</Badge>
                   )}
                   {r.pr_state === "closed" && (
                     <Badge className="text-[10px] text-red-400 bg-red-950/40 border-red-900/40 rounded-full">✕ Closed</Badge>
+                  )}
+                  {r.head_branch && (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
+                      <GitBranch className="h-3 w-3 shrink-0" />
+                      {r.head_branch}
+                    </span>
+                  )}
+                  {r.author_login && (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <User className="h-3 w-3 shrink-0" />
+                      {r.author_login}
+                    </span>
                   )}
                   <span className="flex items-center gap-1.5">
                     <span className={cn("w-2 h-2 rounded-full", st.dot, st.pulse && "animate-pulse-dot")} />
@@ -397,7 +412,7 @@ export function ReviewsPage() {
                 { key: "all",       label: "All"       },
                 { key: "pending",   label: "Pending"   },
                 { key: "running",   label: "Running"   },
-                { key: "completed", label: "Completed" },
+                { key: "completed", label: "Reviewed"  },
                 { key: "failed",    label: "Failed"    },
               ].map(f => {
                 const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length

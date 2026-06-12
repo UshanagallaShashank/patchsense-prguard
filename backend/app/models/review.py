@@ -19,6 +19,7 @@ class Review(Base):
     installation_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("installations.id"))
     repo_full_name: Mapped[str] = mapped_column(String, nullable=False)
     pr_number: Mapped[int] = mapped_column(nullable=False)
+    head_branch: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

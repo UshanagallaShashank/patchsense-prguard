@@ -7,8 +7,11 @@ class PullRequestWebhookEvent(BaseModel):
     repo_full_name: str
     pr_number: int
     pr_title: str
+    pr_branch: str
     pr_state: str  # "open" | "closed" | "merged"
     action: str
+    is_draft: bool
+    author_login: str
 
 
 # Parses raw GitHub webhook JSON into a typed event
@@ -30,6 +33,9 @@ def parse_pr_event(payload: dict) -> PullRequestWebhookEvent | None:
         repo_full_name=payload["repository"]["full_name"],
         pr_number=pr["number"],
         pr_title=pr.get("title", ""),
+        pr_branch=pr.get("head", {}).get("ref", ""),
         pr_state=pr_state,
         action=action,
+        is_draft=bool(pr.get("draft", False)),
+        author_login=(pr.get("user") or {}).get("login", ""),
     )

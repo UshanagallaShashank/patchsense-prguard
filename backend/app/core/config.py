@@ -29,3 +29,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+# test1 = settings.github_webhook_secret
