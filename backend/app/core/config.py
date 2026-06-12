@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     env: str = "development"
     log_level: str = "INFO"
+    review_timeout_seconds: int = 120
 
 
 settings = Settings()
