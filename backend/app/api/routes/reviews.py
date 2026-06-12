@@ -166,7 +166,7 @@ def merge_review_pr(
     review_id: uuid.UUID,
     client: Client = Depends(get_supabase),
 ) -> Any:
-    from app.services.github_service import merge_pr
+    from app.services.github_service import get_pr, merge_pr
 
     review = get_review(client, review_id)
     if not review:
@@ -174,6 +174,21 @@ def merge_review_pr(
 
     if review.get("pr_state") != "open":
         raise HTTPException(status_code=400, detail="PR is not open")
+
+    # Live conflict check: never attempt a merge GitHub will reject
+    try:
+        pr = get_pr(review["repo_full_name"], review["pr_number"], wait_for_mergeable=True)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not check PR mergeability: {e}")
+
+    mergeable_state = pr.get("mergeable_state") or "unknown"
+    client.table("reviews").update({"mergeable_state": mergeable_state}).eq("id", str(review_id)).execute()
+
+    if pr.get("mergeable") is False:
+        raise HTTPException(
+            status_code=409,
+            detail="PR has merge conflicts with the base branch. Resolve them on GitHub first.",
+        )
 
     try:
         result = merge_pr(review["repo_full_name"], review["pr_number"])
