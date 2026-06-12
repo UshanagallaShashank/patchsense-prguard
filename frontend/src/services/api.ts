@@ -25,3 +25,32 @@ export async function fetchReview(id: string): Promise<Review> {
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
 }
+
+// Ask AI to generate a patch for a finding
+export async function generateFix(reviewId: string, findingId: string): Promise<{ patch: string; file_path: string }> {
+  const res = await fetch(`${BASE}/reviews/${reviewId}/findings/${findingId}/fix`, { method: "POST" });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
+// Apply a patch — commit directly or open a fix PR
+export async function applyFix(
+  reviewId: string,
+  findingId: string,
+  mode: "commit" | "pr",
+): Promise<{ mode: string; branch?: string; pr_url?: string; pr_number?: number }> {
+  const res = await fetch(`${BASE}/reviews/${reviewId}/apply-fix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ finding_id: findingId, mode }),
+  });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
+// Merge the PR associated with a review
+export async function mergePr(reviewId: string): Promise<{ merged: boolean }> {
+  const res = await fetch(`${BASE}/reviews/${reviewId}/merge`, { method: "POST" });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}

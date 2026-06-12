@@ -13,6 +13,7 @@ class FindingOut(BaseModel):
     line_number: int | None
     message: str
     suggestion: str | None
+    patch: str | None = None
 
     model_config = {"from_attributes": True}
 

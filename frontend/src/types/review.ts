@@ -10,6 +10,7 @@ export interface Finding {
   line_number: number | null;
   message: string;
   suggestion: string | null;
+  patch: string | null;
 }
 
 export interface Review {

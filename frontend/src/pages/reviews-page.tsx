@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, ExternalLink, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { generateFix, applyFix, mergePr } from "../services/api"
 import type { Finding, Review, ReviewStatus } from "../types/review"
 
 /* ── config ──────────────────────────────────────────────────── */
@@ -119,18 +121,77 @@ function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void 
   )
 }
 
+/* ── DiffViewer ──────────────────────────────────────────────── */
+
+function DiffViewer({ patch }: { patch: string }) {
+  return (
+    <div className="rounded-lg border border-border overflow-hidden text-[11px] font-mono">
+      {patch.split("\n").map((line, i) => {
+        const bg = line.startsWith("+") && !line.startsWith("+++")
+          ? "bg-green-950/50 text-green-400"
+          : line.startsWith("-") && !line.startsWith("---")
+          ? "bg-red-950/50 text-red-400"
+          : line.startsWith("@@")
+          ? "bg-blue-950/40 text-blue-400"
+          : "text-muted-foreground"
+        return (
+          <div key={i} className={cn("px-3 py-0.5 whitespace-pre-wrap break-all", bg)}>
+            {line || " "}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /* ── FindingRow ──────────────────────────────────────────────── */
 
-function FindingRow({ f }: { f: Finding }) {
-  const [open, setOpen] = useState(false)
+function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
+  const [open, setOpen]         = useState(false)
+  const [patch, setPatch]       = useState<string | null>(f.patch ?? null)
+  const [generating, setGen]    = useState(false)
+  const [applying, setApplying] = useState<"commit" | "pr" | null>(null)
   const a = AGENT[f.agent as keyof typeof AGENT]
   const Icon = a?.icon
 
+  const handleGenerateFix = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setGen(true)
+    try {
+      const res = await generateFix(reviewId, f.id)
+      setPatch(res.patch)
+      setOpen(true)
+    } catch (err: any) {
+      toast.error("Fix generation failed", { description: err.message })
+    } finally {
+      setGen(false)
+    }
+  }
+
+  const handleApply = async (mode: "commit" | "pr") => {
+    setApplying(mode)
+    try {
+      const res = await applyFix(reviewId, f.id, mode)
+      if (mode === "pr" && res.pr_url) {
+        toast.success("Fix PR created", {
+          description: `PR #${res.pr_number} opened`,
+          action: { label: "Open", onClick: () => window.open(res.pr_url, "_blank") },
+        })
+      } else {
+        toast.success("Fix committed", { description: `Pushed to ${res.branch}` })
+      }
+    } catch (err: any) {
+      toast.error("Apply failed", { description: err.message })
+    } finally {
+      setApplying(null)
+    }
+  }
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen} disabled={!f.suggestion}>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <div className="py-3 border-b border-border last:border-0">
         <CollapsibleTrigger asChild>
-          <div className={cn("flex gap-3 items-start", f.suggestion && "cursor-pointer")}>
+          <div className={cn("flex gap-3 items-start", (f.suggestion || patch) && "cursor-pointer")}>
             <div className={cn(
               "w-7 h-7 rounded-lg shrink-0 mt-0.5 flex items-center justify-center",
               a?.bg ?? "bg-secondary", "border", a?.border ?? "border-border"
@@ -151,7 +212,13 @@ function FindingRow({ f }: { f: Finding }) {
               </div>
               <p className="text-sm text-foreground/80 leading-relaxed">{f.message}</p>
             </div>
-            {f.suggestion && (
+            <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={e => e.stopPropagation()}>
+              <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleGenerateFix} disabled={generating}>
+                {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                {patch ? "Regen" : "Fix"}
+              </Button>
+            </div>
+            {(f.suggestion || patch) && (
               <span className="text-muted-foreground/40 mt-1.5 shrink-0">
                 {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </span>
@@ -159,11 +226,38 @@ function FindingRow({ f }: { f: Finding }) {
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          {f.suggestion && (
-            <div className="mt-2 ml-10 px-3 py-2.5 bg-green-950/30 border border-green-900/40 rounded-lg text-xs text-green-400 leading-relaxed animate-slide-down">
-              💡 {f.suggestion}
-            </div>
-          )}
+          <div className="mt-2 ml-10 space-y-2">
+            {f.suggestion && (
+              <div className="px-3 py-2.5 bg-green-950/30 border border-green-900/40 rounded-lg text-xs text-green-400 leading-relaxed">
+                💡 {f.suggestion}
+              </div>
+            )}
+            {patch && (
+              <>
+                <DiffViewer patch={patch} />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs gap-1.5 border-green-900/50 text-green-400 hover:bg-green-950/40"
+                    onClick={() => handleApply("commit")}
+                    disabled={!!applying}
+                  >
+                    {applying === "commit" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                    Commit to branch
+                  </Button>
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs gap-1.5 border-blue-900/50 text-blue-400 hover:bg-blue-950/40"
+                    onClick={() => handleApply("pr")}
+                    disabled={!!applying}
+                  >
+                    {applying === "pr" ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitPullRequest className="h-3 w-3" />}
+                    Open fix PR
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
@@ -173,7 +267,8 @@ function FindingRow({ f }: { f: Finding }) {
 /* ── ReviewCard ──────────────────────────────────────────────── */
 
 function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded]   = useState(false)
+  const [merging, setMerging]     = useState(false)
   const st = STATUS[r.status] ?? STATUS.pending
   const findings = agentFilter === "all" ? r.findings : r.findings.filter(f => f.agent === agentFilter)
 
@@ -256,6 +351,24 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground/60 ml-auto">{timeAgo(r.created_at)}</span>
+                  {(!r.pr_state || r.pr_state === "open") && r.status === "completed" && (
+                    <Button
+                      size="sm" variant="outline"
+                      className="h-6 text-[10px] px-2 gap-1 border-purple-900/50 text-purple-400 hover:bg-purple-950/40 shrink-0"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setMerging(true)
+                        mergePr(r.id)
+                          .then(() => toast.success("PR merged!"))
+                          .catch((err: any) => toast.error("Merge failed", { description: err.message }))
+                          .finally(() => setMerging(false))
+                      }}
+                      disabled={merging}
+                    >
+                      {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitMerge className="h-3 w-3" />}
+                      Merge
+                    </Button>
+                  )}
                 </div>
               </div>
               <span className="text-muted-foreground/40 mt-1 shrink-0">
@@ -284,7 +397,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   : agentFilter === "all" ? "🎉 No issues found" : `No ${agentFilter} findings`}
               </p>
             ) : (
-              findings.map(f => <FindingRow key={f.id} f={f} />)
+              findings.map(f => <FindingRow key={f.id} f={f} reviewId={r.id} />)
             )}
           </div>
         </CollapsibleContent>
