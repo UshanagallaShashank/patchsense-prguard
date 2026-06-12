@@ -166,17 +166,29 @@ def merge_review_pr(
     review_id: uuid.UUID,
     client: Client = Depends(get_supabase),
 ) -> Any:
-    from app.services.github_service import merge_pr
+    import httpx
+    from app.services.github_service import merge_pr, _headers, _API
 
     review = get_review(client, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    if review.get("pr_state") != "open":
-        raise HTTPException(status_code=400, detail="PR is not open")
+    repo = review["repo_full_name"]
+    pr_number = review["pr_number"]
+
+    # Always fetch current state from GitHub before attempting
+    gh = httpx.get(f"{_API}/repos/{repo}/pulls/{pr_number}", headers=_headers(), timeout=10)
+    if gh.is_success:
+        gh_state = gh.json()
+        if gh_state.get("merged"):
+            client.table("reviews").update({"pr_state": "merged"}).eq("id", str(review_id)).execute()
+            return {"merged": True, "already_merged": True}
+        if gh_state.get("state") == "closed":
+            client.table("reviews").update({"pr_state": "closed"}).eq("id", str(review_id)).execute()
+            raise HTTPException(status_code=400, detail="PR is already closed")
 
     try:
-        result = merge_pr(review["repo_full_name"], review["pr_number"])
+        result = merge_pr(repo, pr_number)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"GitHub merge failed: {e}")
 

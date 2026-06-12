@@ -359,7 +359,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                         e.stopPropagation()
                         setMerging(true)
                         mergePr(r.id)
-                          .then(() => toast.success("PR merged!"))
+                          .then((res: any) => res.already_merged
+                            ? toast.info("Already merged", { description: "State synced in dashboard" })
+                            : toast.success("PR merged!"))
                           .catch((err: any) => toast.error("Merge failed", { description: err.message }))
                           .finally(() => setMerging(false))
                       }}
