@@ -21,6 +21,7 @@ export interface Review {
   head_branch: string | null;
   author_login: string | null;
   pr_state: PrState | null;
+  mergeable_state: string | null;
   status: ReviewStatus;
   created_at: string;
   completed_at: string | null;

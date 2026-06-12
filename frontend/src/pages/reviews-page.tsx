@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, ExternalLink, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2 } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
 import { SeverityBadge } from "../components/severity-badge"
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { generateFix, applyFix, mergePr } from "../services/api"
@@ -269,7 +270,18 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
 function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
   const [expanded, setExpanded]   = useState(false)
   const [merging, setMerging]     = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const hasConflicts = r.mergeable_state === "dirty"
   const st = STATUS[r.status] ?? STATUS.pending
+
+  const doMerge = () => {
+    setConfirmOpen(false)
+    setMerging(true)
+    mergePr(r.id)
+      .then(() => toast.success("PR merged!"))
+      .catch((err: any) => toast.error("Merge failed", { description: err.message }))
+      .finally(() => setMerging(false))
+  }
   const findings = agentFilter === "all" ? r.findings : r.findings.filter(f => f.agent === agentFilter)
 
   const sevCounts = ["critical", "high", "medium", "low", "info"].reduce<Record<string, number>>((a, s) => {
@@ -308,6 +320,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   )}
                   {r.pr_state === "closed" && (
                     <Badge className="text-[10px] text-red-400 bg-red-950/40 border-red-900/40 rounded-full">✕ Closed</Badge>
+                  )}
+                  {hasConflicts && (!r.pr_state || r.pr_state === "open") && (
+                    <Badge className="text-[10px] text-amber-400 bg-amber-950/40 border-amber-900/40 rounded-full">⚠ Conflicts</Badge>
                   )}
                   {r.head_branch && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
@@ -352,22 +367,31 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   )}
                   <span className="text-[11px] text-muted-foreground/60 ml-auto">{timeAgo(r.created_at)}</span>
                   {(!r.pr_state || r.pr_state === "open") && r.status === "completed" && (
-                    <Button
-                      size="sm" variant="outline"
-                      className="h-6 text-[10px] px-2 gap-1 border-purple-900/50 text-purple-400 hover:bg-purple-950/40 shrink-0"
-                      onClick={e => {
-                        e.stopPropagation()
-                        setMerging(true)
-                        mergePr(r.id)
-                          .then(() => toast.success("PR merged!"))
-                          .catch((err: any) => toast.error("Merge failed", { description: err.message }))
-                          .finally(() => setMerging(false))
-                      }}
-                      disabled={merging}
-                    >
-                      {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitMerge className="h-3 w-3" />}
-                      Merge
-                    </Button>
+                    hasConflicts ? (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-2 gap-1 border-amber-900/50 text-amber-400 shrink-0 opacity-70 cursor-not-allowed"
+                        onClick={e => e.stopPropagation()}
+                        disabled
+                        title="This PR has merge conflicts with the base branch — resolve them on GitHub first"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Conflicts
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-2 gap-1 border-purple-900/50 text-purple-400 hover:bg-purple-950/40 shrink-0"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setConfirmOpen(true)
+                        }}
+                        disabled={merging}
+                      >
+                        {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitMerge className="h-3 w-3" />}
+                        Merge
+                      </Button>
+                    )
                   )}
                 </div>
               </div>
@@ -402,6 +426,43 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
           </div>
         </CollapsibleContent>
       </Collapsible>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent onClick={e => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitMerge className="h-4 w-4 text-purple-400" />
+              Merge this PR?
+            </DialogTitle>
+            <DialogDescription>
+              <span className="font-semibold text-foreground">{r.pr_title ?? `PR #${r.pr_number}`}</span>
+              {" "}(#{r.pr_number}) on <span className="font-mono">{r.repo_full_name}</span> will be
+              squash-merged into the base branch. This cannot be undone from the dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          {r.findings.some(f => f.severity === "critical" || f.severity === "high") && (
+            <div className="mt-3 flex gap-2 items-start bg-red-950/30 border border-red-900/50 rounded-xl px-3 py-2">
+              <AlertTriangle className="text-red-400 h-4 w-4 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-400">
+                This PR has unresolved critical/high findings from the AI review.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button size="sm" variant="outline" className="h-8 text-xs">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1 bg-purple-700 hover:bg-purple-600 text-white"
+              onClick={doMerge}
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              Confirm merge
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
