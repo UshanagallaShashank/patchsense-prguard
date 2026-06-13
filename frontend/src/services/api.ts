@@ -92,6 +92,7 @@ export interface ConnectedRepo {
   webhook_id: number | null;
   active: boolean;
   is_owner: boolean;
+  owner_login?: string;
 }
 
 export async function fetchRepos(): Promise<ConnectedRepo[]> {

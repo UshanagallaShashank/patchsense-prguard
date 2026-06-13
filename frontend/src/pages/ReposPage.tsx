@@ -339,6 +339,9 @@ function RepoCard({
             {!repo.is_owner && (
               <span className="flex items-center gap-1 text-[11px] text-zinc-500">
                 <Users className="h-3 w-3" /> Member
+                {repo.owner_login && (
+                  <span className="text-zinc-600">· owned by <span className="text-violet-400 font-mono">@{repo.owner_login}</span></span>
+                )}
               </span>
             )}
             {repo.connected_at && (

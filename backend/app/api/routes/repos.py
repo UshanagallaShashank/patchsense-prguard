@@ -165,15 +165,27 @@ async def list_repos(user=Depends(get_current_user)) -> Any:
         )]
 
     member_ids = list(set(by_uid + by_login) - owned_ids)
-    member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
+    member_repos = _rows(db.table("repos").select("id,owner_id,full_name,connected_at,webhook_id,active")
                          .in_("id", member_ids).execute()) if member_ids else []
+
+    # Fetch owner github_login for each member repo so the UI can show "Owned by @..."
+    owner_id_set = {r["owner_id"] for r in member_repos if r.get("owner_id")}
+    owner_login_map: dict[str, str] = {}
+    if owner_id_set:
+        profiles = _rows(db.table("profiles").select("id,github_login")
+                         .in_("id", list(owner_id_set)).execute())
+        owner_login_map = {p["id"]: p.get("github_login") or "" for p in profiles}
 
     seen: set[str] = set()
     merged = []
     for repo in owned + member_repos:
         if repo["id"] not in seen:
             seen.add(repo["id"])
-            merged.append({**repo, "is_owner": repo["id"] in owned_ids})
+            is_owner = repo["id"] in owned_ids
+            entry = {**repo, "is_owner": is_owner}
+            if not is_owner:
+                entry["owner_login"] = owner_login_map.get(repo.get("owner_id", ""), "")
+            merged.append(entry)
 
     for repo in merged:
         if repo.get("active") is None:
@@ -271,7 +283,10 @@ async def remove_member(repo_id: str, member_login: str, user=Depends(get_curren
     owner = db.table("repos").select("id").eq("id", repo_id).eq("owner_id", str(user.id)).execute()
     if not owner.data:
         raise HTTPException(status_code=403, detail="Only the repo owner can remove members.")
-    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", member_login).execute()
+    # Strip @ so we match both "@username" (old rows) and "username" (new rows)
+    clean = member_login.lstrip("@")
+    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", clean).execute()
+    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", f"@{clean}").execute()
     return {"removed": member_login}
 
 
