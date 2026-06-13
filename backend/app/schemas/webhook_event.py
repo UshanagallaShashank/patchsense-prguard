@@ -8,13 +8,13 @@ class PullRequestWebhookEvent(BaseModel):
     pr_number: int
     pr_title: str
     pr_branch: str
+    head_sha: str
     pr_state: str  # "open" | "closed" | "merged"
     action: str
     is_draft: bool
     author_login: str
 
 
-# Parses raw GitHub webhook JSON into a typed event
 def parse_pr_event(payload: dict) -> PullRequestWebhookEvent | None:
     if "pull_request" not in payload:
         return None
@@ -22,7 +22,6 @@ def parse_pr_event(payload: dict) -> PullRequestWebhookEvent | None:
     pr = payload["pull_request"]
     action = payload["action"]
 
-    # Determine PR state from action + merged flag
     if action == "closed":
         pr_state = "merged" if pr.get("merged") else "closed"
     else:
@@ -34,6 +33,7 @@ def parse_pr_event(payload: dict) -> PullRequestWebhookEvent | None:
         pr_number=pr["number"],
         pr_title=pr.get("title", ""),
         pr_branch=pr.get("head", {}).get("ref", ""),
+        head_sha=pr.get("head", {}).get("sha", ""),
         pr_state=pr_state,
         action=action,
         is_draft=bool(pr.get("draft", False)),

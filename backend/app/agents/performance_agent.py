@@ -24,9 +24,14 @@ async def run_performance_agent(diff: str) -> list[dict[str, Any]]:
 
 def _parse_findings(content: str, agent: str) -> list[dict[str, Any]]:
     start, end = content.find("["), content.rfind("]") + 1
-    if start == -1:
+    if start == -1 or end == 0:
         return []
-    findings = json.loads(content[start:end])
+    try:
+        findings = json.loads(content[start:end])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(findings, list):
+        return []
     for f in findings:
         f["agent"] = agent
     return findings
