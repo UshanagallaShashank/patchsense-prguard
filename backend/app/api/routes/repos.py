@@ -1,5 +1,6 @@
 import re
 import secrets
+import uuid
 from typing import Any, cast
 
 import httpx
@@ -240,17 +241,17 @@ async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(ge
             )
 
     invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).maybe_single().execute())
-    invited_user_id = invited_user["id"] if invited_user else None
+    invited_user_id: str = invited_user["id"] if invited_user else str(uuid.uuid5(uuid.NAMESPACE_URL, f"pending:{body.github_login}"))
 
     db.table("repo_members").upsert({
         "repo_id": repo_id,
-        "user_id": invited_user_id or str(user.id),
+        "user_id": invited_user_id,
         "github_login": body.github_login,
         "role": body.role,
         "invited_by": str(user.id),
     }, on_conflict="repo_id,user_id").execute()
 
-    return {"invited": body.github_login, "role": body.role}
+    return {"invited": body.github_login, "found_in_system": invited_user is not None, "role": body.role}
 
 
 @router.delete("/repos/{repo_id}/members/{member_login}")
@@ -352,19 +353,29 @@ async def admin_list_users(user=Depends(get_current_user)) -> Any:
 
 # ── admin: stats ──────────────────────────────────────────────────────────────
 
+_PLAN_PRICES: dict[str, int] = {"free": 0, "pro": 9, "team": 29}
+
+
 @router.get("/admin/stats")
 async def admin_stats(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
     _require_admin(user, db)
 
     profiles = _rows(db.table("profiles").select("plan").execute())
-    repos = _rows(db.table("repos").select("id,active").execute())
-    reviews = _rows(db.table("reviews").select("id,created_at").execute())
+    repos    = _rows(db.table("repos").select("id,active,webhook_id").execute())
+    reviews  = _rows(db.table("reviews").select("id,status,created_at").execute())
 
     plan_counts: dict[str, int] = {"free": 0, "pro": 0, "team": 0}
     for p in profiles:
-        plan = p.get("plan", "free")
+        plan = p.get("plan", "free") or "free"
         plan_counts[plan] = plan_counts.get(plan, 0) + 1
+
+    mrr = sum(_PLAN_PRICES.get(p.get("plan", "free") or "free", 0) for p in profiles)
+
+    status_counts: dict[str, int] = {}
+    for rv in reviews:
+        s = rv.get("status") or "unknown"
+        status_counts[s] = status_counts.get(s, 0) + 1
 
     return {
         "users": {
@@ -373,10 +384,31 @@ async def admin_stats(user=Depends(get_current_user)) -> Any:
         },
         "repos": {
             "total": len(repos),
-            "active": sum(1 for r in repos if r.get("active", True)),
-            "inactive": sum(1 for r in repos if not r.get("active", True)),
+            "active": sum(1 for r in repos if r.get("active") is not False),
+            "inactive": sum(1 for r in repos if r.get("active") is False),
+            "no_webhook": sum(1 for r in repos if not r.get("webhook_id")),
         },
         "reviews": {
             "total": len(reviews),
+            "by_status": status_counts,
+            "completed": status_counts.get("completed", 0),
+            "failed": status_counts.get("failed", 0),
+        },
+        "revenue": {
+            "mrr_estimate": mrr,
         },
     }
+
+
+@router.get("/admin/activity")
+async def admin_activity(user=Depends(get_current_user)) -> Any:
+    """Return the 25 most recent reviews across all users for the activity feed."""
+    db = get_supabase_admin()
+    _require_admin(user, db)
+    return _rows(
+        db.table("reviews")
+        .select("id,repo_full_name,pr_number,pr_title,status,pr_state,created_at,author_login")
+        .order("created_at", desc=True)
+        .limit(25)
+        .execute()
+    )

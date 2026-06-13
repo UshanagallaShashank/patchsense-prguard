@@ -33,7 +33,12 @@ def get_reviews(
     client: Client = Depends(get_supabase),
     user=Depends(get_current_user),
 ) -> Any:
-    return list_reviews(client, page, user_id=str(user.id), admin_client=get_supabase_admin())
+    return list_reviews(
+        client, page,
+        user_id=str(user.id),
+        admin_client=get_supabase_admin(),
+        github_login=user.user_metadata.get("user_name"),
+    )
 
 
 @router.get("/reviews/stream")
@@ -50,7 +55,8 @@ async def stream_reviews(
             if await request.is_disconnected():
                 break
             try:
-                data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin())
+                gh_login = user.user_metadata.get("user_name")
+                data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin(), github_login=gh_login)
                 serialized = json.dumps(data, default=str)
                 h = hashlib.md5(serialized.encode()).hexdigest()
                 if h != last_hash:
@@ -73,7 +79,12 @@ def get_review_by_id(
     client: Client = Depends(get_supabase),
     user=Depends(get_current_user),
 ) -> Any:
-    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
+    review = get_review(
+        client, review_id,
+        user_id=str(user.id),
+        admin_client=get_supabase_admin(),
+        github_login=user.user_metadata.get("user_name"),
+    )
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
