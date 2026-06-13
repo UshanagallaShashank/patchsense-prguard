@@ -173,6 +173,15 @@ export async function fetchMe(): Promise<Me> {
   return res.json();
 }
 
+export async function updateMyPlan(plan: string): Promise<void> {
+  const res = await fetch(`${BASE}/me/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ plan }),
+  });
+  if (!res.ok) throw new Error(await extractError(res));
+}
+
 export async function adminSetPlan(userId: string, plan: string, bypassPlan = false): Promise<void> {
   const res = await fetch(`${BASE}/admin/set-plan`, {
     method: "POST",

@@ -8,7 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { connectRepo } from "../services/api"
+import { connectRepo, updateMyPlan } from "../services/api"
 import { useAuth } from "../context/AuthContext"
 import { BASE } from "../services/api"
 
@@ -481,7 +481,10 @@ export function ConnectRepoModal({ open, onClose, onConnected, skipSetup = false
 
   function handleClose() { reset(); onClose() }
 
-  function handleNext() {
+  async function handleNext() {
+    if (step === "s5") {
+      try { await updateMyPlan(selectedPlan) } catch { /* non-fatal */ }
+    }
     if (step === "input") {
       const parsed = parseRepoUrl(url)
       if (!parsed) {
@@ -657,7 +660,9 @@ export function ConnectRepoModal({ open, onClose, onConnected, skipSetup = false
           )}
 
           {/* ── Error ─────────────────────────────── */}
-          {step === "error" && (
+          {step === "error" && (() => {
+            const isPlanLimit = connError.toLowerCase().includes("repo limit reached")
+            return (
             <div className="space-y-4">
               <div className="flex flex-col items-center py-4 gap-3">
                 <div className="h-16 w-16 rounded-2xl bg-red-950/30 border border-red-800/40 flex items-center justify-center">
@@ -674,22 +679,76 @@ export function ConnectRepoModal({ open, onClose, onConnected, skipSetup = false
                 <p className="text-[12px] text-zinc-300">{connError}</p>
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 space-y-1.5">
-                <p className="text-[11px] font-semibold text-zinc-400">Common causes</p>
-                {[
-                  "You don't have admin access to this repo",
-                  "The repo URL was entered incorrectly",
-                  "A webhook already exists with a different secret",
-                  "GitHub API rate limit (try again in a moment)",
-                ].map(t => (
-                  <div key={t} className="flex items-start gap-2 text-[11px] text-zinc-500">
-                    <span className="text-zinc-700 shrink-0">•</span>
-                    {t}
+              {isPlanLimit ? (
+                <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 px-4 py-4 space-y-3">
+                  <p className="text-[11px] font-semibold text-violet-300">Upgrade to connect more repos</p>
+                  <div className="space-y-2">
+                    {PLANS.filter(p => p.key !== "free").map(plan => {
+                      const Icon = plan.icon
+                      return (
+                        <button
+                          key={plan.key}
+                          onClick={async () => {
+                            try {
+                              await updateMyPlan(plan.key)
+                            } catch {
+                              setConnError("Failed to upgrade plan — please try again.")
+                              return
+                            }
+                            setSelectedPlan(plan.key)
+                            setStep("connecting")
+                            setConnError("")
+                            try {
+                              await connectRepo(fullName)
+                              setStep("done")
+                              onConnected?.(fullName)
+                            } catch (e: unknown) {
+                              setConnError(e instanceof Error ? e.message : "Connection failed — please try again.")
+                              setStep("error")
+                            }
+                          }}
+                          className={cn(
+                            "w-full text-left rounded-lg border px-3 py-2.5 transition-all hover:opacity-90 flex items-center justify-between gap-2",
+                            plan.color
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon className={cn("h-3.5 w-3.5 shrink-0", plan.iconColor)} />
+                            <span className="text-[12px] font-semibold text-zinc-100">{plan.label}</span>
+                            {plan.badge && <Badge className="text-[9px] bg-violet-700/50 text-violet-300 border-violet-600/40 px-1.5">{plan.badge}</Badge>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-zinc-400">{plan.perks[0]}</span>
+                            <span className="text-[12px] font-bold text-zinc-200">{plan.price}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
-                ))}
-              </div>
+                  <p className="text-[10px] text-zinc-600">Selecting a plan upgrades your account and immediately retries connecting your repo.</p>
+                  <Button variant="outline" size="sm" onClick={handleClose} className="w-full border-zinc-800 text-zinc-500 mt-1">
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 space-y-1.5">
+                  <p className="text-[11px] font-semibold text-zinc-400">Common causes</p>
+                  {[
+                    "You don't have admin access to this repo",
+                    "The repo URL was entered incorrectly",
+                    "A webhook already exists with a different secret",
+                    "GitHub API rate limit (try again in a moment)",
+                  ].map(t => (
+                    <div key={t} className="flex items-start gap-2 text-[11px] text-zinc-500">
+                      <span className="text-zinc-700 shrink-0">•</span>
+                      {t}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+            )
+          })()}
 
           </div>{/* end scrollable content */}
 
@@ -735,7 +794,7 @@ export function ConnectRepoModal({ open, onClose, onConnected, skipSetup = false
               </div>
             )}
 
-            {step === "error" && (
+            {step === "error" && !connError.toLowerCase().includes("repo limit reached") && (
               <div className="flex gap-2 justify-between">
                 <Button variant="outline" size="sm" onClick={() => setStep("input")} className="border-zinc-800 text-zinc-400 gap-1.5">
                   <RefreshCw className="h-3.5 w-3.5" />
