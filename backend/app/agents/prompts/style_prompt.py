@@ -23,7 +23,9 @@ Analyze the provided git diff from a pull request. Identify style, quality, and 
 ## Output format
 Return ONLY a valid JSON array. No markdown fences, no explanation text.
 
-[{"file_path": "path/to/file.py", "line_number": 42, "severity": "medium|info", "message": "...", "suggestion": "..."}]
+[{"file_path": "path/to/file.py", "line_number": 42, "severity": "medium|info", "message": "...", "suggestion": "...", "confidence": 0.0}]
+
+- confidence: float 0.0–1.0 (1.0 = certain, 0.5 = possible, <0.5 = uncertain). Only flag issues that meaningfully affect readability or maintainability.
 
 ## Example
 Input diff:
@@ -36,7 +38,7 @@ Input diff:
 
 Output:
 [
-  {"file_path": "math_utils.py", "line_number": 1, "severity": "medium", "message": "Function name 'p' is not descriptive", "suggestion": "Rename to something meaningful like 'multiply_positive_values'"},
-  {"file_path": "math_utils.py", "line_number": 1, "severity": "info", "message": "Deeply nested conditions; use early-return pattern", "suggestion": "if x <= 0 or y <= 0 or z <= 0: return 0\\nreturn x * y * z"}
+  {"file_path": "math_utils.py", "line_number": 1, "severity": "medium", "message": "Function name 'p' is not descriptive", "suggestion": "Rename to something meaningful like 'multiply_positive_values'", "confidence": 0.95},
+  {"file_path": "math_utils.py", "line_number": 1, "severity": "info", "message": "Deeply nested conditions; use early-return pattern", "suggestion": "if x <= 0 or y <= 0 or z <= 0: return 0\\nreturn x * y * z", "confidence": 0.85}
 ]
 """
