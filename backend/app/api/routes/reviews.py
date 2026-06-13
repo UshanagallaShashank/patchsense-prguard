@@ -17,6 +17,14 @@ from app.services.review_service import get_review, list_reviews
 router = APIRouter(prefix="/api")
 
 
+def _require_repo_active(repo_full_name: str) -> None:
+    """Raise 403 if the repo is paused (active=False)."""
+    admin = get_supabase_admin()
+    row = admin.table("repos").select("active").eq("full_name", repo_full_name).maybe_single().execute()
+    if row and row.data and row.data.get("active") is False:
+        raise HTTPException(status_code=403, detail="This repo is paused. Resume it in Settings → Repos to use this feature.")
+
+
 # ── list / get ────────────────────────────────────────────────────────────────
 
 @router.get("/reviews", response_model=list[ReviewOut])
@@ -87,6 +95,8 @@ async def generate_fix(
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
+    _require_repo_active(review["repo_full_name"])
+
     findings = review.get("findings", [])
     finding = next((f for f in findings if str(f["id"]) == str(finding_id)), None)
     if not finding:
@@ -133,6 +143,8 @@ def apply_fix(
     review = get_review(admin, review_id, user_id=str(user.id), admin_client=admin)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
+
+    _require_repo_active(review["repo_full_name"])
 
     findings = review.get("findings", [])
     finding = next((f for f in findings if str(f["id"]) == body.finding_id), None)
@@ -246,6 +258,8 @@ def merge_review_pr(
     review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
+
+    _require_repo_active(review["repo_full_name"])
 
     if review.get("pr_state") != "open":
         raise HTTPException(status_code=400, detail="PR is not open")

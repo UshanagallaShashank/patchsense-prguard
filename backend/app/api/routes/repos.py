@@ -162,6 +162,10 @@ async def list_repos(user=Depends(get_current_user)) -> Any:
             seen.add(repo["id"])
             merged.append({**repo, "is_owner": repo in owned})
 
+    # Normalize NULL active → True so the frontend never gets null.
+    for repo in merged:
+        if repo.get("active") is None:
+            repo["active"] = True
     return sorted(merged, key=lambda r: r.get("connected_at", ""), reverse=True)
 
 

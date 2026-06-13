@@ -34,5 +34,6 @@ class ReviewOut(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     findings: list[FindingOut] = []
+    repo_active: bool = True
 
     model_config = {"from_attributes": True}

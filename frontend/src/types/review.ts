@@ -28,4 +28,5 @@ export interface Review {
   created_at: string;
   completed_at: string | null;
   findings: Finding[];
+  repo_active: boolean;
 }

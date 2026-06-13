@@ -17,6 +17,7 @@ interface AuthState {
   loading: boolean;
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>(null!);
@@ -68,8 +69,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function refreshProfile() {
+    if (user) await loadProfile(user.id);
+  }
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signInWithGitHub, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, loading, signInWithGitHub, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
