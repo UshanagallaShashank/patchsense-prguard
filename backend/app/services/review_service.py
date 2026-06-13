@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from supabase import Client
 
@@ -7,7 +7,6 @@ PAGE_SIZE = 20
 
 
 def _rows(result: Any) -> list[dict[str, Any]]:
-    from typing import cast
     data = result.data if hasattr(result, "data") else result
     return cast(list[dict[str, Any]], data) if isinstance(data, list) else []
 
@@ -105,7 +104,9 @@ def list_reviews(
     reviews = query.range(offset, offset + PAGE_SIZE - 1).execute().data or []
 
     for r in reviews:
-        r["repo_active"] = active_map.get(r["repo_full_name"], True)
+        r_dict = cast(dict[str, Any], r)
+        repo_name = cast(str, r_dict.get("repo_full_name", ""))
+        r_dict["repo_active"] = active_map.get(repo_name, True)
 
     return reviews  # type: ignore[return-value]
 
@@ -130,8 +131,12 @@ def get_review(
     active_map: dict[str, bool] = {}
     if user_id and admin_client:
         active_map = _user_repo_active_map(admin_client, user_id, github_login)
-        if review.get("repo_full_name") not in active_map:
+        review_dict = cast(dict[str, Any], review)
+        repo_name = cast(str, review_dict.get("repo_full_name", ""))
+        if repo_name not in active_map:
             return None
 
-    review["repo_active"] = active_map.get(review.get("repo_full_name", ""), True)
+    review_dict = cast(dict[str, Any], review)
+    repo_name = cast(str, review_dict.get("repo_full_name", ""))
+    review_dict["repo_active"] = active_map.get(repo_name, True)
     return review

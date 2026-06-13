@@ -62,7 +62,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
     if event.action in _REVIEW_ACTIONS:
         # Respect the repo's active flag — paused repos must not trigger reviews.
         repo_row = client.table("repos").select("active").eq("full_name", event.repo_full_name).maybe_single().execute()
-        if repo_row and repo_row.data and repo_row.data.get("active") is False:
+        if repo_row and repo_row.data and cast(dict[str, Any], repo_row.data).get("active") is False:
             return Response(status_code=200)
 
         review_id = _upsert_review(client, event)
