@@ -77,6 +77,18 @@ def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False) -> dict[
     return data
 
 
+def get_pr_files(repo: str, pr_number: int) -> list[str]:
+    """Return list of file paths changed in a PR."""
+    resp = httpx.get(
+        f"{_API}/repos/{repo}/pulls/{pr_number}/files",
+        headers=_headers(),
+        params={"per_page": "100"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return [f["filename"] for f in resp.json()]
+
+
 def merge_pr(repo: str, pr_number: int) -> dict[str, Any]:
     """Merge a PR via squash merge."""
     resp = httpx.put(

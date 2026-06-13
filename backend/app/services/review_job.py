@@ -7,7 +7,7 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
     import httpx
     from app.agents.orchestrator import run_all_agents
     from app.core.supabase_client import get_supabase_admin
-    from app.services.github_service import get_pr
+    from app.services.github_service import get_pr, get_pr_files
 
     client = get_supabase_admin()
     log.info("review_job_started", repo=repo, pr=pr_number, review_id=review_id)
@@ -25,9 +25,14 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         diff = resp.text
 
         mergeable_state = "unknown"
+        conflict_files: list[str] = []
+        base_branch = "main"
         try:
             pr_meta = get_pr(repo, pr_number, wait_for_mergeable=True)
             mergeable_state = pr_meta.get("mergeable_state") or "unknown"
+            base_branch = pr_meta.get("base", {}).get("ref", "main")
+            if pr_meta.get("mergeable") is False:
+                conflict_files = get_pr_files(repo, pr_number)
         except Exception as exc:
             log.warning("mergeable_check_failed", repo=repo, pr=pr_number, error=str(exc))
 
@@ -52,6 +57,8 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
             "status": "completed",
             "completed_at": "now()",
             "mergeable_state": mergeable_state,
+            "base_branch": base_branch,
+            "conflict_files": conflict_files or None,
         }).eq("id", review_id).execute()
 
         log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings))

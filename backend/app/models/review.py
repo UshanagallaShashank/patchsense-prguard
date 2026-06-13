@@ -21,6 +21,8 @@ class Review(Base):
     pr_number: Mapped[int] = mapped_column(nullable=False)
     head_branch: Mapped[str | None] = mapped_column(String, nullable=True)
     mergeable_state: Mapped[str | None] = mapped_column(String, nullable=True)
+    base_branch: Mapped[str | None] = mapped_column(String, nullable=True)
+    conflict_files: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array
     status: Mapped[str] = mapped_column(String, default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

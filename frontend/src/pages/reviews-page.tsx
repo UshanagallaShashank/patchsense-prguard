@@ -122,6 +122,84 @@ function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void 
   )
 }
 
+/* ── ConflictDetail ─────────────────────────────────────────── */
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className="shrink-0 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+    >
+      {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
+
+function ConflictDetail({ headBranch, baseBranch, conflictFiles, repo, prNumber }: {
+  headBranch: string; baseBranch: string; conflictFiles: string[]; repo: string; prNumber: number
+}) {
+  const steps = [
+    { cmd: `git fetch origin`, label: "1. Fetch latest" },
+    { cmd: `git checkout ${headBranch}`, label: "2. Switch to your branch" },
+    { cmd: `git merge origin/${baseBranch}`, label: "3. Merge base into your branch" },
+    { cmd: `# Resolve conflicts in the files listed below, then:`, label: "" },
+    { cmd: `git add .`, label: "4. Stage resolved files" },
+    { cmd: `git commit`, label: "5. Commit the merge" },
+    { cmd: `git push`, label: "6. Push to GitHub" },
+  ]
+
+  return (
+    <div className="my-3 rounded-xl border border-amber-900/40 bg-amber-950/20 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-900/30">
+        <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+        <span className="text-xs font-semibold text-amber-400">
+          Merge conflict — this branch cannot be merged until resolved
+        </span>
+        <a
+          href={`https://github.com/${repo}/pull/${prNumber}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto text-[11px] text-amber-400/70 hover:text-amber-400 underline underline-offset-2 shrink-0"
+        >
+          Resolve on GitHub ↗
+        </a>
+      </div>
+
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-[11px] text-muted-foreground mb-2 font-medium uppercase tracking-wider">
+          {conflictFiles.length > 0 ? "Files to resolve" : "Affected files not yet loaded — re-trigger a review to fetch them"}
+        </p>
+        {conflictFiles.length > 0 && (
+          <div className="flex flex-col gap-1 mb-3">
+            {conflictFiles.map(f => (
+              <div key={f} className="flex items-center gap-2 text-[11px] font-mono text-amber-300/80 bg-amber-950/30 rounded px-2 py-1">
+                <span className="text-amber-500/60 shrink-0">⚠</span>
+                {f}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 pb-3">
+        <p className="text-[11px] text-muted-foreground mb-2 font-medium uppercase tracking-wider">How to resolve locally</p>
+        <div className="flex flex-col gap-1">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] font-mono bg-black/30 rounded px-2 py-1">
+              <span className="text-muted-foreground/40 min-w-[7ch]">{s.label}</span>
+              <span className={cn("flex-1", s.cmd.startsWith("#") ? "text-muted-foreground/50 italic" : "text-green-400/90")}>
+                {s.cmd}
+              </span>
+              {!s.cmd.startsWith("#") && <CopyButton text={s.cmd} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── DiffViewer ──────────────────────────────────────────────── */
 
 function DiffViewer({ patch }: { patch: string }) {
@@ -405,6 +483,15 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
         <CollapsibleContent>
           <Separator />
           <div className="px-5 pb-3">
+            {hasConflicts && (!r.pr_state || r.pr_state === "open") && (
+              <ConflictDetail
+                headBranch={r.head_branch ?? ""}
+                baseBranch={r.base_branch ?? "main"}
+                conflictFiles={r.conflict_files ?? []}
+                repo={r.repo_full_name}
+                prNumber={r.pr_number}
+              />
+            )}
             {r.status === "failed" && (
               <div className="my-3 flex gap-3 items-start bg-red-950/30 border border-red-900/50 rounded-xl px-4 py-3">
                 <AlertTriangle className="text-red-400 h-5 w-5 shrink-0" />
