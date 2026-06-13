@@ -79,6 +79,7 @@ async def stream_reviews(
     async def generator() -> AsyncGenerator[str, None]:
         last_hash = ""
         gh_login = user.user_metadata.get("user_name")
+        ticks = 0
         while True:
             if await request.is_disconnected():
                 break
@@ -91,7 +92,11 @@ async def stream_reviews(
                     yield f"data: {serialized}\n\n"
             except Exception as exc:
                 log.warning("sse_poll_error", user_id=user_id, error=str(exc))
-            await asyncio.sleep(3)
+            # Send a keepalive comment every ~40s to prevent proxy timeouts.
+            ticks += 1
+            if ticks % 5 == 0:
+                yield ": keepalive\n\n"
+            await asyncio.sleep(8)
 
     return StreamingResponse(
         generator(),

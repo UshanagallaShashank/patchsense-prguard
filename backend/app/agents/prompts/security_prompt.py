@@ -23,7 +23,9 @@ Analyze the provided git diff from a pull request. Identify security vulnerabili
 ## Output format
 Return ONLY a valid JSON array. No markdown fences, no explanation text.
 
-[{"file_path": "path/to/file.py", "line_number": 42, "severity": "critical|high|medium|info", "message": "...", "suggestion": "..."}]
+[{"file_path": "path/to/file.py", "line_number": 42, "severity": "critical|high|medium|info", "message": "...", "suggestion": "...", "confidence": 0.0}]
+
+- confidence: float 0.0–1.0 (1.0 = certain, 0.5 = possible, <0.5 = uncertain). Be conservative — only report findings you are confident about.
 
 ## Example
 Input diff:
@@ -32,7 +34,7 @@ Input diff:
 
 Output:
 [
-  {"file_path": "config.py", "line_number": 1, "severity": "critical", "message": "Hardcoded secret key in source code", "suggestion": "Use os.environ['SECRET_KEY'] and rotate the exposed value"},
-  {"file_path": "config.py", "line_number": 2, "severity": "high", "message": "SQL injection via string concatenation", "suggestion": "Use parameterized query: cursor.execute('SELECT * FROM users WHERE name = %s', (username,))"}
+  {"file_path": "config.py", "line_number": 1, "severity": "critical", "message": "Hardcoded secret key in source code", "suggestion": "Use os.environ['SECRET_KEY'] and rotate the exposed value", "confidence": 1.0},
+  {"file_path": "config.py", "line_number": 2, "severity": "high", "message": "SQL injection via string concatenation", "suggestion": "Use parameterized query: cursor.execute('SELECT * FROM users WHERE name = %s', (username,))", "confidence": 0.95}
 ]
 """

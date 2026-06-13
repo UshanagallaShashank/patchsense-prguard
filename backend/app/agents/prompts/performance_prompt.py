@@ -22,7 +22,9 @@ Analyze the provided git diff from a pull request. Identify performance regressi
 ## Output format
 Return ONLY a valid JSON array. No markdown fences, no explanation text.
 
-[{"file_path": "path/to/file.py", "line_number": 42, "severity": "high|medium|info", "message": "...", "suggestion": "..."}]
+[{"file_path": "path/to/file.py", "line_number": 42, "severity": "high|medium|info", "message": "...", "suggestion": "...", "confidence": 0.0}]
+
+- confidence: float 0.0–1.0 (1.0 = certain, 0.5 = possible, <0.5 = uncertain). Only report findings where the performance impact is real and measurable.
 
 ## Example
 Input diff:
@@ -31,6 +33,6 @@ Input diff:
 
 Output:
 [
-  {"file_path": "reports.py", "line_number": 2, "severity": "high", "message": "N+1 query: one DB call per user inside a loop", "suggestion": "Use a single IN query: db.query(Order).filter(Order.user_id.in_([u.id for u in users])).all()"}
+  {"file_path": "reports.py", "line_number": 2, "severity": "high", "message": "N+1 query: one DB call per user inside a loop", "suggestion": "Use a single IN query: db.query(Order).filter(Order.user_id.in_([u.id for u in users])).all()", "confidence": 0.95}
 ]
 """

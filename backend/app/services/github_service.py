@@ -143,15 +143,49 @@ def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False, token: s
 
 
 def get_pr_files(repo: str, pr_number: int, token: str | None = None) -> list[str]:
-    """Return list of file paths changed in a PR."""
-    resp = httpx.get(
-        f"{_API}/repos/{repo}/pulls/{pr_number}/files",
-        headers=_headers(token),
-        params={"per_page": "100"},
-        timeout=20,
-    )
+    """Return list of file paths changed in a PR, paginating through all pages."""
+    files: list[str] = []
+    page = 1
+    while True:
+        resp = httpx.get(
+            f"{_API}/repos/{repo}/pulls/{pr_number}/files",
+            headers=_headers(token),
+            params={"per_page": "100", "page": str(page)},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        batch = resp.json()
+        files.extend(f["filename"] for f in batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return files
+
+
+async def post_commit_status(
+    repo: str,
+    sha: str,
+    state: str,
+    description: str,
+    context: str = "patchsense/review",
+    token: str | None = None,
+) -> None:
+    """Post a GitHub commit status (pending/success/failure) to gate PR merges."""
+    import httpx as _httpx
+    payload = {
+        "state": state,
+        "description": description[:140],
+        "context": context,
+        "target_url": "",
+    }
+    async with _httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{_API}/repos/{repo}/statuses/{sha}",
+            json=payload,
+            headers=_headers(token),
+            timeout=15,
+        )
     resp.raise_for_status()
-    return [f["filename"] for f in resp.json()]
 
 
 def merge_pr(repo: str, pr_number: int, token: str | None = None) -> dict[str, Any]:
