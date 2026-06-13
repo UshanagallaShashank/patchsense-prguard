@@ -508,7 +508,6 @@ export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
     }
   }
 
-  const isSetup = SETUP_STEPS.includes(step)
   const isFirst = step === "s1"
   const [owner, repo] = fullName.split("/")
   const userLogin = user?.user_metadata?.user_name as string | undefined
@@ -527,7 +526,9 @@ export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
           <p className="text-xs text-zinc-500 ml-9">{SLIDE_TITLES[step]}</p>
         </div>
 
-        <div className="px-6 pt-5 pb-6">
+        {/* Scrollable content area — fixed height so nav buttons never go off-screen */}
+        <div className="flex flex-col" style={{ maxHeight: "calc(100dvh - 140px)" }}>
+          <div className="flex-1 overflow-y-auto px-6 pt-5 pb-2">
           <PhaseBar step={step} />
 
           {/* ── Setup slides ──────────────────────── */}
@@ -689,61 +690,63 @@ export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
             </div>
           )}
 
-          {/* ── Nav buttons ───────────────────────── */}
-          {step !== "connecting" && step !== "done" && step !== "error" && (
-            <div className={cn("flex mt-6", isFirst ? "justify-end" : "justify-between")}>
-              {!isFirst && (
-                <Button variant="outline" size="sm" onClick={handleBack} className="border-zinc-800 text-zinc-400">
-                  Back
-                </Button>
-              )}
-              {step !== "confirm" && (
-                <Button
-                  onClick={handleNext}
-                  disabled={step === "input" && !url.trim()}
-                  className="gap-2 bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40"
-                >
-                  {isSetup ? "Next" : "Next"}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
-              {step === "confirm" && (
-                <Button
-                  onClick={handleConnect}
-                  className="gap-2 bg-violet-600 hover:bg-violet-500 text-white"
-                >
-                  Connect repo
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          )}
+          </div>{/* end scrollable content */}
 
-          {/* Done actions */}
-          {step === "done" && (
-            <div className="flex gap-2 justify-between mt-4">
-              <Button variant="outline" size="sm" onClick={reset} className="border-zinc-800 text-zinc-400">
-                Connect another
-              </Button>
-              <Button onClick={handleClose} className="bg-violet-600 hover:bg-violet-500 text-white">
-                Done
-              </Button>
-            </div>
-          )}
+          {/* Sticky nav footer — always visible */}
+          <div className={cn(
+            "shrink-0 px-6 pb-5 pt-3 border-t border-zinc-800/60",
+            step === "connecting" && "hidden"
+          )}>
+            {step !== "done" && step !== "error" && (
+              <div className={cn("flex", isFirst ? "justify-end" : "justify-between")}>
+                {!isFirst && (
+                  <Button variant="outline" size="sm" onClick={handleBack} className="border-zinc-800 text-zinc-400">
+                    Back
+                  </Button>
+                )}
+                {step !== "confirm" && (
+                  <Button
+                    onClick={handleNext}
+                    disabled={step === "input" && !url.trim()}
+                    className="gap-2 bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40"
+                  >
+                    Next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+                {step === "confirm" && (
+                  <Button onClick={handleConnect} className="gap-2 bg-violet-600 hover:bg-violet-500 text-white">
+                    Connect repo
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
 
-          {/* Error actions */}
-          {step === "error" && (
-            <div className="flex gap-2 justify-between mt-4">
-              <Button variant="outline" size="sm" onClick={() => setStep("input")} className="border-zinc-800 text-zinc-400 gap-1.5">
-                <RefreshCw className="h-3.5 w-3.5" />
-                Try again
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleClose} className="border-zinc-800 text-zinc-400">
-                Cancel
-              </Button>
-            </div>
-          )}
-        </div>
+            {step === "done" && (
+              <div className="flex gap-2 justify-between">
+                <Button variant="outline" size="sm" onClick={reset} className="border-zinc-800 text-zinc-400">
+                  Connect another
+                </Button>
+                <Button onClick={handleClose} className="bg-violet-600 hover:bg-violet-500 text-white">
+                  Done
+                </Button>
+              </div>
+            )}
+
+            {step === "error" && (
+              <div className="flex gap-2 justify-between">
+                <Button variant="outline" size="sm" onClick={() => setStep("input")} className="border-zinc-800 text-zinc-400 gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Try again
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleClose} className="border-zinc-800 text-zinc-400">
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>{/* end flex-col wrapper */}
       </DialogContent>
     </Dialog>
   )
