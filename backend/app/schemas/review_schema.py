@@ -27,6 +27,7 @@ class ReviewOut(BaseModel):
     head_branch: str | None = None
     author_login: str | None = None
     pr_state: str | None = None  # "open" | "closed" | "merged"
+    mergeable_state: str | None = None  # GitHub mergeable_state: "clean" | "dirty" | "blocked" | ...
     status: str
     created_at: datetime
     completed_at: datetime | None

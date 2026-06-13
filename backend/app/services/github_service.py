@@ -60,6 +60,24 @@ def create_branch(repo: str, new_branch: str, from_ref: str) -> None:
     resp.raise_for_status()
 
 
+def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False) -> dict[str, Any]:
+    """Return PR details. GitHub computes `mergeable` asynchronously, so with
+    wait_for_mergeable=True we re-poll briefly while it is still null."""
+    import time
+
+    attempts = 4 if wait_for_mergeable else 1
+    data: dict[str, Any] = {}
+    for i in range(attempts):
+        resp = httpx.get(f"{_API}/repos/{repo}/pulls/{pr_number}", headers=_headers(), timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        if not wait_for_mergeable or data.get("mergeable") is not None:
+            break
+        if i < attempts - 1:
+            time.sleep(2)
+    return data
+
+
 def merge_pr(repo: str, pr_number: int) -> dict[str, Any]:
     """Merge a PR via squash merge."""
     resp = httpx.put(

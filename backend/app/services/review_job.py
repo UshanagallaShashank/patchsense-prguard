@@ -1,3 +1,5 @@
+import asyncio
+
 import structlog
 
 log = structlog.get_logger()
@@ -7,6 +9,7 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
     import httpx
     from app.agents.orchestrator import run_all_agents
     from app.core.supabase_client import get_supabase_admin
+    from app.services.github_service import get_pr
 
     client = get_supabase_admin()
     log.info("review_job_started", repo=repo, pr=pr_number, review_id=review_id)
@@ -22,6 +25,14 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         )
         resp.raise_for_status()
         diff = resp.text
+
+        mergeable_state = "unknown"
+        try:
+            # get_pr is blocking (sync httpx + retry sleep) — keep it off the event loop
+            pr = await asyncio.to_thread(get_pr, repo, pr_number, True)
+            mergeable_state = pr.get("mergeable_state") or "unknown"
+        except Exception as exc:
+            log.warning("mergeable_check_failed", repo=repo, pr=pr_number, error=str(exc))
 
         findings = await run_all_agents(diff)
 
@@ -43,6 +54,7 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         client.table("reviews").update({
             "status": "completed",
             "completed_at": "now()",
+            "mergeable_state": mergeable_state,
         }).eq("id", review_id).execute()
 
         log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings))
