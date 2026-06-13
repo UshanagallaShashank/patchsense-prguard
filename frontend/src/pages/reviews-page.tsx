@@ -397,10 +397,13 @@ function DiffViewer({ patch }: { patch: string }) {
 /* ── FindingRow ──────────────────────────────────────────────── */
 
 function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
-  const [open, setOpen]         = useState(false)
-  const [patch, setPatch]       = useState<string | null>(f.patch ?? null)
-  const [generating, setGen]    = useState(false)
-  const [applying, setApplying] = useState<"commit" | "pr" | null>(null)
+  const [open, setOpen]           = useState(false)
+  const [patch, setPatch]         = useState<string | null>(f.patch ?? null)
+  const [generating, setGen]      = useState(false)
+  const [applying, setApplying]   = useState<"commit" | "pr" | null>(null)
+  const [applyMode, setApplyMode] = useState<"commit" | "pr" | null>(null)
+  const [applyConfirm, setApplyConfirm] = useState(false)
+  const [fixReviewed, setFixReviewed]   = useState(false)
   const a = AGENT[f.agent as keyof typeof AGENT]
   const Icon = a?.icon
 
@@ -489,7 +492,7 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
                   <Button
                     size="sm" variant="outline"
                     className="h-7 text-xs gap-1.5 border-green-900/50 text-green-400 hover:bg-green-950/40"
-                    onClick={() => handleApply("commit")}
+                    onClick={() => { setApplyMode("commit"); setApplyConfirm(true); setFixReviewed(false) }}
                     disabled={!!applying}
                   >
                     {applying === "commit" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
@@ -498,7 +501,7 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
                   <Button
                     size="sm" variant="outline"
                     className="h-7 text-xs gap-1.5 border-blue-900/50 text-blue-400 hover:bg-blue-950/40"
-                    onClick={() => handleApply("pr")}
+                    onClick={() => { setApplyMode("pr"); setApplyConfirm(true); setFixReviewed(false) }}
                     disabled={!!applying}
                   >
                     {applying === "pr" ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitPullRequest className="h-3 w-3" />}
@@ -510,6 +513,67 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
           </div>
         </CollapsibleContent>
       </div>
+
+      {/* Apply-fix confirmation dialog */}
+      <Dialog open={applyConfirm} onOpenChange={v => { setApplyConfirm(v); if (!v) setFixReviewed(false) }}>
+        <DialogContent onClick={e => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {applyMode === "pr"
+                ? <><GitPullRequest className="h-4 w-4 text-blue-400" /> Open fix PR?</>
+                : <><Check className="h-4 w-4 text-green-400" /> Commit AI fix?</>}
+            </DialogTitle>
+            <DialogDescription>
+              {applyMode === "pr"
+                ? "A new branch and pull request will be created with the AI-generated patch."
+                : "The AI-generated patch will be committed directly to the PR branch."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 items-start bg-amber-950/20 border border-amber-900/30 rounded-xl px-3 py-2.5">
+            <AlertTriangle className="text-amber-400 h-4 w-4 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300/80 leading-relaxed">
+              <strong className="text-amber-300">AI can make mistakes.</strong> Review the diff above carefully before applying — auto-fixes may introduce new bugs or miss context.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs font-mono text-zinc-400 truncate">
+            {f.file_path}{f.line_number != null ? `:${f.line_number}` : ""}
+          </div>
+
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={fixReviewed}
+              onChange={e => setFixReviewed(e.target.checked)}
+              className="w-4 h-4 rounded accent-violet-600"
+            />
+            <span className="text-xs text-zinc-300">I have reviewed the patch and it looks correct</span>
+          </label>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button size="sm" variant="outline" className="h-8 text-xs">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              disabled={!fixReviewed}
+              className={cn(
+                "h-8 text-xs gap-1 text-white disabled:opacity-40",
+                applyMode === "pr" ? "bg-blue-700 hover:bg-blue-600" : "bg-green-800 hover:bg-green-700"
+              )}
+              onClick={() => {
+                setApplyConfirm(false)
+                if (applyMode) handleApply(applyMode)
+              }}
+            >
+              {applyMode === "pr"
+                ? <><GitPullRequest className="h-3.5 w-3.5" /> Create fix PR</>
+                : <><Check className="h-3.5 w-3.5" /> Commit to branch</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   )
 }
@@ -517,14 +581,16 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
 /* ── ReviewCard ──────────────────────────────────────────────── */
 
 function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
-  const [expanded, setExpanded]   = useState(false)
-  const [merging, setMerging]     = useState(false)
+  const [expanded, setExpanded]       = useState(false)
+  const [merging, setMerging]         = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [mergeReviewed, setMergeReviewed] = useState(false)
   const hasConflicts = r.mergeable_state === "dirty"
   const st = STATUS[r.status] ?? STATUS.pending
 
   const doMerge = () => {
     setConfirmOpen(false)
+    setMergeReviewed(false)
     setMerging(true)
     mergePr(r.id)
       .then(() => toast.success("PR merged!"))
@@ -688,7 +754,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
         </CollapsibleContent>
       </Collapsible>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <Dialog open={confirmOpen} onOpenChange={v => { setConfirmOpen(v); if (!v) setMergeReviewed(false) }}>
         <DialogContent onClick={e => e.stopPropagation()}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -701,22 +767,44 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
               squash-merged into the base branch. This cannot be undone from the dashboard.
             </DialogDescription>
           </DialogHeader>
+
+          {/* AI disclaimer */}
+          <div className="flex gap-2 items-start bg-amber-950/20 border border-amber-900/30 rounded-xl px-3 py-2.5 mt-1">
+            <AlertTriangle className="text-amber-400 h-4 w-4 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300/80 leading-relaxed">
+              <strong className="text-amber-300">AI can make mistakes.</strong> Review all findings and the PR diff carefully before merging — PatchSense suggestions are not a substitute for human review.
+            </p>
+          </div>
+
           {r.findings.some(f => f.severity === "critical" || f.severity === "high") && (
-            <div className="mt-3 flex gap-2 items-start bg-red-950/30 border border-red-900/50 rounded-xl px-3 py-2">
+            <div className="flex gap-2 items-start bg-red-950/30 border border-red-900/50 rounded-xl px-3 py-2">
               <AlertTriangle className="text-red-400 h-4 w-4 shrink-0 mt-0.5" />
               <p className="text-xs text-red-400">
-                This PR has unresolved critical/high findings from the AI review.
+                This PR has unresolved critical/high AI findings. Merge only if you've reviewed and accepted the risk.
               </p>
             </div>
           )}
+
+          {/* Confirmation checkbox */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none mt-1">
+            <input
+              type="checkbox"
+              checked={mergeReviewed}
+              onChange={e => setMergeReviewed(e.target.checked)}
+              className="w-4 h-4 rounded accent-purple-600"
+            />
+            <span className="text-xs text-zinc-300">I have reviewed the AI findings and the PR diff</span>
+          </label>
+
           <DialogFooter>
             <DialogClose asChild>
               <Button size="sm" variant="outline" className="h-8 text-xs">Cancel</Button>
             </DialogClose>
             <Button
               size="sm"
-              className="h-8 text-xs gap-1 bg-purple-700 hover:bg-purple-600 text-white"
+              className="h-8 text-xs gap-1 bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-40"
               onClick={doMerge}
+              disabled={!mergeReviewed}
             >
               <GitMerge className="h-3.5 w-3.5" />
               Confirm merge
