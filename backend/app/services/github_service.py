@@ -46,7 +46,6 @@ def create_fix_pr(repo: str, head_branch: str, base_branch: str, title: str, bod
 
 def create_branch(repo: str, new_branch: str, from_ref: str) -> None:
     """Create a new branch from from_ref."""
-    # Get the SHA of from_ref
     resp = httpx.get(f"{_API}/repos/{repo}/git/ref/heads/{from_ref}", headers=_headers(), timeout=20)
     resp.raise_for_status()
     sha = resp.json()["object"]["sha"]
@@ -61,12 +60,12 @@ def create_branch(repo: str, new_branch: str, from_ref: str) -> None:
 
 
 def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False) -> dict[str, Any]:
-    """Return PR details. GitHub computes `mergeable` asynchronously, so with
-    wait_for_mergeable=True we re-poll briefly while it is still null."""
+    """Return PR details. With wait_for_mergeable=True, retries briefly while GitHub
+    computes the mergeable field asynchronously."""
     import time
 
-    attempts = 4 if wait_for_mergeable else 1
     data: dict[str, Any] = {}
+    attempts = 4 if wait_for_mergeable else 1
     for i in range(attempts):
         resp = httpx.get(f"{_API}/repos/{repo}/pulls/{pr_number}", headers=_headers(), timeout=20)
         resp.raise_for_status()
