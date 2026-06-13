@@ -10,10 +10,11 @@ def validate_input(data: Any) -> bool:
 
 
 def deduplicate(items: list) -> list:
+    """Return a new list with duplicate items removed, preserving order."""
     seen: set = set()
     result = []
     for item in items:
-        key = item if not isinstance(item, dict) else str(sorted(item.items()))
+        key = item if not isinstance(item, dict) else frozenset(item.items())
         if key not in seen:
             seen.add(key)
             result.append(item)
