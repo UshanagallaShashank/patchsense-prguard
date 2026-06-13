@@ -1,7 +1,7 @@
 import { useState } from "react"
 import {
   GitBranch, Loader2, CheckCircle2, AlertCircle, ArrowRight,
-  Zap, Eye, Shield, ShieldCheck, GitPullRequest,
+  Webhook, Zap, Eye, Shield, ShieldCheck, KeyRound, GitPullRequest,
   Sparkles, XCircle, RefreshCw, Crown, Users,
 } from "lucide-react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { connectRepo, updateMyPlan } from "../services/api"
 import { useAuth } from "../context/AuthContext"
-import { BASE } from "../services/api"
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
