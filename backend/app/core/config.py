@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # AI
     gemini_api_key: str
-    gemini_model: str = "gemini-flash-lte"
+    gemini_model: str = "gemini-2.5-flash-lite"
 
     # LangSmith tracing — optional; tracing is disabled when key is empty
     langchain_api_key: str = ""
