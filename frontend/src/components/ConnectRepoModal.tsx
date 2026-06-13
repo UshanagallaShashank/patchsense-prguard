@@ -2,7 +2,7 @@ import { useState } from "react"
 import {
   GitBranch, Loader2, CheckCircle2, AlertCircle, ArrowRight,
   Webhook, Zap, Eye, Shield, ShieldCheck, KeyRound, GitPullRequest,
-  Sparkles, XCircle, RefreshCw, Crown, Users,
+  Sparkles, XCircle, RefreshCw, Crown, Users, Copy, Check as CheckIcon,
 } from "lucide-react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -202,61 +202,101 @@ function Slide2({ userLogin }: { userLogin?: string }) {
   )
 }
 
+function CopyField({ label, value, hint, badge }: { label: string; value: string; hint?: string; badge?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold text-zinc-400">{label}</span>
+        {badge && <span className="text-[10px] bg-violet-900/50 text-violet-300 border border-violet-700/40 rounded px-1.5 py-px">{badge}</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-[12px] font-mono text-zinc-200 break-all">
+          {value}
+        </code>
+        <button
+          onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+          className={cn(
+            "shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center transition-colors",
+            copied ? "border-emerald-700 bg-emerald-950/40 text-emerald-400" : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+          )}
+        >
+          {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      {hint && <p className="text-[11px] text-zinc-600">{hint}</p>}
+    </div>
+  )
+}
+
 function Slide3({ userLogin }: { userLogin?: string }) {
   return (
     <div className="flex flex-col gap-3">
-      {/* Auth token status */}
-      <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3">
-        <div className="flex items-center gap-2 mb-2.5">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <p className="text-sm font-semibold text-emerald-300">GitHub token active</p>
-          {userLogin && <span className="ml-auto font-mono text-[11px] text-zinc-400">@{userLogin}</span>}
+      {/* Path instruction */}
+      <div className="flex items-center gap-2 text-[11px] text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+        <Webhook className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+        <span>GitHub → Your repo → <strong className="text-zinc-300">Settings</strong> → <strong className="text-zinc-300">Webhooks</strong> → <strong className="text-zinc-300">Add webhook</strong></span>
+      </div>
+
+      {/* Fields to fill */}
+      <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-1">Fill in these fields</p>
+
+        <CopyField
+          label="Payload URL"
+          value={WEBHOOK_URL}
+          hint="Paste this exactly — this is where GitHub sends PR events"
+        />
+
+        <CopyField
+          label="Content type"
+          value="application/json"
+          hint="Must be JSON, not form-encoded"
+        />
+
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-zinc-400">Secret</span>
+            <span className="text-[10px] bg-amber-900/40 text-amber-300 border border-amber-700/40 rounded px-1.5 py-px">auto-generated</span>
+          </div>
+          <div className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2">
+            <KeyRound className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <p className="text-[12px] text-zinc-500">
+              PatchSense generates a unique secret per repo when you click <strong className="text-zinc-400">Connect repo</strong> — you don't enter this manually.
+            </p>
+          </div>
         </div>
-        <p className="text-[11px] text-zinc-400 leading-relaxed mb-2">
-          PatchSense uses <strong className="text-zinc-300">your GitHub OAuth token</strong> from login to install the webhook — no separate setup needed.
-        </p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {[
-            { scope: "repo",            desc: "Read/write repo access" },
-            { scope: "admin:repo_hook", desc: "Install & manage webhooks" },
-            { scope: "read:user",       desc: "Read your GitHub profile" },
-            { scope: "user:email",      desc: "Read your email address" },
-          ].map(({ scope, desc }) => (
-            <div key={scope} className="flex items-start gap-1.5 text-[11px]">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
-              <div>
-                <code className="text-emerald-300/80">{scope}</code>
-                <p className="text-zinc-600">{desc}</p>
-              </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold text-zinc-400">Which events</span>
+          <div className="flex flex-col gap-1.5 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-[12px]">
+            <div className="flex items-center gap-2 text-zinc-400">
+              <span className="text-zinc-600">○</span> Just the push event
             </div>
-          ))}
+            <div className="flex items-center gap-2 text-zinc-400">
+              <span className="text-zinc-600">○</span> Send me everything
+            </div>
+            <div className="flex items-center gap-2 text-zinc-200 font-medium">
+              <span className="text-violet-400">●</span> Let me select individual events
+              <span className="ml-auto text-[10px] text-violet-400 border border-violet-700/40 bg-violet-900/30 rounded px-1.5">select this</span>
+            </div>
+            <div className="ml-5 mt-1 flex items-center gap-2 text-[11px] text-zinc-400">
+              <CheckIcon className="h-3 w-3 text-emerald-400 shrink-0" />
+              <span>Tick <strong className="text-zinc-300">Pull requests</strong> only — uncheck everything else</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[12px] text-zinc-400 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+          <span><strong className="text-zinc-300">Active</strong> — leave this checked</span>
         </div>
       </div>
 
-      {/* Webhook details */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 space-y-2">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Webhook auto-configured as</p>
-        <div className="flex flex-col gap-2 text-[12px]">
-          {[
-            { label: "Payload URL",  value: WEBHOOK_URL,          mono: true  },
-            { label: "Content type", value: "application/json",   mono: true  },
-            { label: "Events",       value: "pull_request only",  mono: false },
-            { label: "Secret",       value: "unique per repo (auto-generated)", mono: false },
-          ].map(({ label, value, mono }) => (
-            <div key={label} className="flex items-start gap-3">
-              <span className="text-zinc-600 w-24 shrink-0 pt-0.5">{label}</span>
-              {mono
-                ? <code className="text-zinc-300 font-mono text-[11px] break-all leading-relaxed">{value}</code>
-                : <span className="text-zinc-400 text-[11px]">{value}</span>
-              }
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-start gap-2 text-[11px] text-zinc-500">
-        <KeyRound className="h-3.5 w-3.5 shrink-0 mt-0.5 text-zinc-600" />
-        The secret is stored in our database encrypted per repo — it's never shown in plain text anywhere.
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-800/30 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-300/80">
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+        PatchSense auto-fills and installs all of this for you — this slide is just so you can verify.
+        {userLogin && <span className="ml-auto font-mono text-zinc-500">@{userLogin}</span>}
       </div>
     </div>
   )
