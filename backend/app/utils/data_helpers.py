@@ -19,3 +19,4 @@ def deduplicate(items: list) -> list:
             seen.add(key)
             result.append(item)
     return result
+        key = item if not isinstance(item, dict) else tuple(sorted(item.items()))
