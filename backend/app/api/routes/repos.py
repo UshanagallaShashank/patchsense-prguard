@@ -147,12 +147,24 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
 @router.get("/repos")
 async def list_repos(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
+    github_login: str | None = user.user_metadata.get("user_name")
 
     owned = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
                   .eq("owner_id", str(user.id)).execute())
+    owned_ids = {r["id"] for r in owned}
 
-    member_rows = _rows(db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute())
-    member_ids = [r["repo_id"] for r in member_rows]
+    # Member repos by user_id
+    by_uid = [r["repo_id"] for r in _rows(
+        db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute()
+    )]
+    # Also by github_login so pending-invite rows (placeholder user_id) still work
+    by_login: list[str] = []
+    if github_login:
+        by_login = [r["repo_id"] for r in _rows(
+            db.table("repo_members").select("repo_id").eq("github_login", github_login).execute()
+        )]
+
+    member_ids = list(set(by_uid + by_login) - owned_ids)
     member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
                          .in_("id", member_ids).execute()) if member_ids else []
 
@@ -161,9 +173,8 @@ async def list_repos(user=Depends(get_current_user)) -> Any:
     for repo in owned + member_repos:
         if repo["id"] not in seen:
             seen.add(repo["id"])
-            merged.append({**repo, "is_owner": repo in owned})
+            merged.append({**repo, "is_owner": repo["id"] in owned_ids})
 
-    # Normalize NULL active → True so the frontend never gets null.
     for repo in merged:
         if repo.get("active") is None:
             repo["active"] = True
