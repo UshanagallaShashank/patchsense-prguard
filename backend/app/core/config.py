@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     supabase_secret_key: str = ""
     database_url: str = ""
     redis_url: str = "redis://localhost:6379"
-    render_url: str = "https://patchsense-prguard-t9ze.onrender.com"
+    render_url: str = ""
     env: str = "development"
     log_level: str = "INFO"
     review_timeout_seconds: int = 120
