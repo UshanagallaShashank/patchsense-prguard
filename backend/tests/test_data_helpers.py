@@ -1,5 +1,3 @@
-import pytest
-
 from app.utils.data_helpers import deduplicate, validate_input
 
 

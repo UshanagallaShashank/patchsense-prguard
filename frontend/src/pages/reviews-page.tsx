@@ -1,7 +1,9 @@
-import { useState } from "react"
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
+import { useAuth } from "../context/AuthContext"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +17,12 @@ import { cn } from "@/lib/utils"
 import { generateFix, applyFix, mergePr, fetchConflictDetails } from "../services/api"
 import type { ConflictFile } from "../services/api"
 import type { Finding, Review, ReviewStatus } from "../types/review"
+
+const PLAN_COLOR: Record<string, string> = {
+  free: "bg-zinc-800 text-zinc-400",
+  pro:  "bg-violet-900/60 text-violet-300",
+  team: "bg-blue-900/60 text-blue-300",
+}
 
 /* ── config ──────────────────────────────────────────────────── */
 
@@ -701,7 +709,29 @@ export function ReviewsPage() {
   const [statusFilter, setStatusFilter]   = useState("all")
   const [prStateFilter, setPrStateFilter] = useState<"open" | "merged" | "all">("open")
   const [showSettings, setShowSettings]   = useState(false)
+  const [showUserMenu, setShowUserMenu]   = useState(false)
+  const [repos, setRepos]                 = useState<{id:string;full_name:string}[]>([])
+  const [reposLoaded, setReposLoaded]     = useState(false)
+  const [timedOut, setTimedOut]           = useState(false)
   const { reviews, loading, error, refresh } = useReviews(page)
+  const { profile, user, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const avatarUrl   = user?.user_metadata?.avatar_url as string | undefined
+  const githubLogin = user?.user_metadata?.user_name as string | undefined
+
+  useEffect(() => {
+    import("../services/api").then(({ fetchRepos }) =>
+      fetchRepos().then(r => { setRepos(r); setReposLoaded(true) }).catch(() => setReposLoaded(true))
+    )
+  }, [])
+
+  // Give SSE 8s to deliver data before showing empty state
+  useEffect(() => {
+    if (!loading) return
+    const t = setTimeout(() => setTimedOut(true), 8000)
+    return () => clearTimeout(t)
+  }, [loading])
 
   const total    = reviews.reduce((s, r) => s + r.findings.length, 0)
   const critical = reviews.reduce((s, r) => s + r.findings.filter(f => f.severity === "critical").length, 0)
@@ -733,14 +763,65 @@ export function ReviewsPage() {
               <Badge variant="destructive" className="text-xs ml-1">⚠ review failed</Badge>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={refresh} className="h-8 w-8">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5">
               <Settings className="h-3.5 w-3.5" />
-              Connect Repo
+              Settings
             </Button>
+
+            {/* User menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(v => !v)}
+                className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 hover:bg-zinc-900 transition-colors"
+              >
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="" className="h-6 w-6 rounded-full" />
+                  : <User className="h-4 w-4 text-zinc-400" />
+                }
+                {profile && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${PLAN_COLOR[profile.plan]}`}>
+                    {profile.plan}
+                  </span>
+                )}
+                <ChevronDown className="h-3 w-3 text-zinc-500" />
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 z-20 w-52 rounded-xl border border-border bg-zinc-950 shadow-xl py-1">
+                    <div className="px-3 py-2 border-b border-border">
+                      <p className="text-xs font-medium text-zinc-200">@{githubLogin}</p>
+                      <p className="text-[11px] text-zinc-500">{user?.email}</p>
+                    </div>
+                    <button
+                      onClick={() => { setShowUserMenu(false); navigate("/onboarding") }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 transition-colors"
+                    >
+                      <PlusCircle className="h-3.5 w-3.5" /> Connect repo
+                    </button>
+                    <button
+                      onClick={() => { setShowUserMenu(false); setShowSettings(true) }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 transition-colors"
+                    >
+                      <Settings className="h-3.5 w-3.5" /> Settings
+                    </button>
+                    <div className="border-t border-border mt-1 pt-1">
+                      <button
+                        onClick={() => signOut()}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-zinc-900 transition-colors"
+                      >
+                        <LogOut className="h-3.5 w-3.5" /> Sign out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -854,27 +935,79 @@ export function ReviewsPage() {
           </Tabs>
         )}
 
-        {loading && (
-          <div className="flex flex-col items-center py-24 text-muted-foreground">
-            <span className="text-4xl mb-4 animate-pulse-dot">🛡️</span>
-            <p className="text-sm">Loading reviews…</p>
+        {/* Loading skeleton */}
+        {loading && !timedOut && (
+          <div className="flex flex-col gap-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-xl border border-border bg-card p-5 animate-pulse">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="h-4 w-48 rounded bg-zinc-800" />
+                  <div className="h-5 w-16 rounded-full bg-zinc-800" />
+                </div>
+                <div className="h-3 w-32 rounded bg-zinc-800/60 mb-4" />
+                <div className="flex gap-2">
+                  <div className="h-6 w-20 rounded bg-zinc-800/40" />
+                  <div className="h-6 w-20 rounded bg-zinc-800/40" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
+
+        {/* No repo connected */}
+        {(timedOut || !loading) && !error && reviews.length === 0 && reposLoaded && repos.length === 0 && (
+          <div className="flex flex-col items-center py-20 text-center">
+            <div className="h-20 w-20 rounded-2xl bg-violet-950/40 border border-violet-800/30 flex items-center justify-center mb-6">
+              <GitBranch className="h-9 w-9 text-violet-400" />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">Connect your first repo</h2>
+            <p className="text-zinc-400 text-sm max-w-sm mb-8">
+              PatchSense will auto-install a webhook and start reviewing every PR automatically — no CI config needed.
+            </p>
+            <Button
+              onClick={() => navigate("/onboarding")}
+              className="gap-2 bg-violet-600 hover:bg-violet-500 text-white px-6"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Connect a repo
+            </Button>
+            <p className="text-zinc-600 text-xs mt-4">You need admin access to the repo</p>
+          </div>
+        )}
+
+        {/* Has repos but no reviews yet */}
+        {(timedOut || !loading) && !error && reviews.length === 0 && reposLoaded && repos.length > 0 && (
+          <div className="flex flex-col items-center py-20 text-center">
+            <div className="h-20 w-20 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6">
+              <GitPullRequest className="h-9 w-9 text-zinc-500" />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">No reviews yet</h2>
+            <p className="text-zinc-400 text-sm max-w-sm mb-3">
+              Open a pull request on one of your connected repos and PatchSense will review it automatically.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center mb-6">
+              {repos.map(r => (
+                <a
+                  key={r.id}
+                  href={`https://github.com/${r.full_name}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-zinc-400 border border-zinc-800 rounded-full px-3 py-1 hover:border-zinc-600 transition-colors"
+                >
+                  <GitBranch className="h-3 w-3" /> {r.full_name}
+                </a>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => navigate("/onboarding")} className="gap-2">
+              <PlusCircle className="h-3.5 w-3.5" /> Connect another repo
+            </Button>
+          </div>
+        )}
+
         {error && (
           <Card className="border-destructive/50 bg-destructive/10">
             <CardContent className="px-5 py-4 text-destructive text-sm">⚠️ {error}</CardContent>
           </Card>
-        )}
-        {!loading && !error && reviews.length === 0 && (
-          <div className="flex flex-col items-center py-24 text-muted-foreground">
-            <span className="text-5xl mb-4">📭</span>
-            <p className="text-base text-foreground/60 mb-2">No reviews yet</p>
-            <p className="text-sm mb-6">Open a PR on a connected repo to trigger a review</p>
-            <Button variant="outline" onClick={() => setShowSettings(true)} className="gap-2">
-              <Settings className="h-3.5 w-3.5" />
-              Connect a Repo
-            </Button>
-          </div>
         )}
 
         {!loading && !error && filteredReviews.length === 0 && reviews.length > 0 && (

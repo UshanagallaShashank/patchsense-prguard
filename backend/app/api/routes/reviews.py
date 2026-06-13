@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import Client
