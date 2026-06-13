@@ -61,7 +61,7 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
     db = get_supabase_admin()
 
     # resolve plan + bypass
-    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
     plan: str = str(prof_data.get("plan", "free"))
     bypass: bool = bool(prof_data.get("bypass_plan", False))
 
@@ -136,7 +136,7 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
     }, on_conflict="owner_id,full_name").execute()
 
     # add owner as a member too (for lookup convenience)
-    repo_row = _row(db.table("repos").select("id").eq("owner_id", str(user.id)).eq("full_name", full_name).single().execute())
+    repo_row = _row(db.table("repos").select("id").eq("owner_id", str(user.id)).eq("full_name", full_name).maybe_single().execute())
     if repo_row:
         db.table("repo_members").upsert({
             "repo_id": repo_row["id"],
@@ -165,7 +165,7 @@ async def list_repos(user=Depends(get_current_user)) -> Any:
 @router.delete("/repos/{repo_id}")
 async def disconnect_repo(repo_id: str, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    row = _row(db.table("repos").select("*").eq("id", repo_id).eq("owner_id", str(user.id)).single().execute())
+    row = _row(db.table("repos").select("*").eq("id", repo_id).eq("owner_id", str(user.id)).maybe_single().execute())
     if not row:
         raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
 
@@ -205,7 +205,7 @@ async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(ge
         raise HTTPException(status_code=403, detail="Only the repo owner can invite members.")
 
     # check member limit
-    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
     plan = str(prof_data.get("plan", "free"))
     bypass = bool(prof_data.get("bypass_plan", False))
     limit = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["members"]
@@ -218,7 +218,7 @@ async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(ge
             )
 
     # look up GitHub user to get their Supabase id (if they've signed in)
-    invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).single().execute())
+    invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).maybe_single().execute())
     invited_user_id = invited_user["id"] if invited_user else None
 
     db.table("repo_members").upsert({
@@ -247,7 +247,7 @@ async def remove_member(repo_id: str, member_login: str, user=Depends(get_curren
 @router.get("/me")
 async def get_me(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    prof_data = _row(db.table("profiles").select("*").eq("id", str(user.id)).single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("*").eq("id", str(user.id)).maybe_single().execute()) or {}
     return {
         "id": str(user.id),
         "email": user.email,
@@ -270,7 +270,7 @@ class SetPlanRequest(BaseModel):
 async def admin_set_plan(body: SetPlanRequest, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
     # only users with bypass_plan can call this
-    prof_data = _row(db.table("profiles").select("bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
     if not prof_data.get("bypass_plan"):
         raise HTTPException(status_code=403, detail="Admin only.")
 
