@@ -566,7 +566,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     )
                   })}
                   {r.findings.length === 0 && r.status === "completed" && (
-                    <span className="text-[11px] text-green-400">✓ Clean PR</span>
+                    <span className="text-[11px] text-green-400" title="AI agents found no code quality issues in this diff">
+                      ✓ No AI findings
+                    </span>
                   )}
                   {(r.status === "pending" || r.status === "running") && (
                     <span className={cn("text-[11px] animate-pulse-dot", st.text)}>
@@ -636,7 +638,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
               <p className="py-6 text-center text-muted-foreground text-sm">
                 {r.status === "pending" || r.status === "running"
                   ? "⏳ Review in progress…"
-                  : agentFilter === "all" ? "🎉 No issues found" : `No ${agentFilter} findings`}
+                  : agentFilter === "all" ? "🎉 No code issues found by AI" : `No ${agentFilter} findings`}
               </p>
             ) : (
               findings.map(f => <FindingRow key={f.id} f={f} reviewId={r.id} />)
