@@ -12,11 +12,19 @@ def _rows(result: Any) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], data) if isinstance(data, list) else []
 
 
-def _user_repo_active_map(admin_client: Client, user_id: str) -> dict[str, bool]:
+def _user_repo_active_map(
+    admin_client: Client,
+    user_id: str,
+    github_login: str | None = None,
+) -> dict[str, bool]:
     """Return {full_name: active} for repos scoped strictly to this user.
 
     Queries by owner_id (not by full_name) so repos owned by other users with
     the same full_name can never contaminate the result.
+
+    Also matches repo_members by github_login so invited users who signed up
+    after the invite was created (when their user_id wasn't known yet) still
+    gain access.
     """
     owned = _rows(
         admin_client.table("repos")
@@ -24,7 +32,8 @@ def _user_repo_active_map(admin_client: Client, user_id: str) -> dict[str, bool]
         .eq("owner_id", user_id)
         .execute()
     )
-    member_repo_ids = [
+
+    by_uid = [
         r["repo_id"]
         for r in _rows(
             admin_client.table("repo_members")
@@ -33,14 +42,27 @@ def _user_repo_active_map(admin_client: Client, user_id: str) -> dict[str, bool]
             .execute()
         )
     ]
+    by_login: list[str] = []
+    if github_login:
+        by_login = [
+            r["repo_id"]
+            for r in _rows(
+                admin_client.table("repo_members")
+                .select("repo_id")
+                .eq("github_login", github_login)
+                .execute()
+            )
+        ]
+
+    all_member_ids = list(set(by_uid + by_login))
     member = (
         _rows(
             admin_client.table("repos")
             .select("full_name,active")
-            .in_("id", member_repo_ids)
+            .in_("id", all_member_ids)
             .execute()
         )
-        if member_repo_ids
+        if all_member_ids
         else []
     )
 
@@ -48,14 +70,17 @@ def _user_repo_active_map(admin_client: Client, user_id: str) -> dict[str, bool]
     for r in owned + member:
         fn = r["full_name"]
         if fn not in result:
-            # NULL active means never explicitly paused — treat as active.
             result[fn] = r.get("active") is not False
     return result
 
 
-def _user_repo_names(admin_client: Client, user_id: str) -> list[str]:
+def _user_repo_names(
+    admin_client: Client,
+    user_id: str,
+    github_login: str | None = None,
+) -> list[str]:
     """Return full_names of all repos the user owns or is a member of."""
-    return list(_user_repo_active_map(admin_client, user_id).keys())
+    return list(_user_repo_active_map(admin_client, user_id, github_login).keys())
 
 
 def list_reviews(
@@ -63,6 +88,7 @@ def list_reviews(
     page: int,
     user_id: str | None = None,
     admin_client: Client | None = None,
+    github_login: str | None = None,
 ) -> list[Any]:
     offset = (page - 1) * PAGE_SIZE
     query = client.table("reviews").select("*, findings(*)").order("created_at", desc=True)
@@ -70,7 +96,7 @@ def list_reviews(
     active_map: dict[str, bool] = {}
 
     if user_id and admin_client:
-        active_map = _user_repo_active_map(admin_client, user_id)
+        active_map = _user_repo_active_map(admin_client, user_id, github_login)
         repo_names = list(active_map.keys())
         if not repo_names:
             return []
@@ -79,8 +105,6 @@ def list_reviews(
     reviews = query.range(offset, offset + PAGE_SIZE - 1).execute().data or []
 
     for r in reviews:
-        # Default True: if a review exists for a repo not in the map,
-        # assume active rather than incorrectly blocking the user.
         r["repo_active"] = active_map.get(r["repo_full_name"], True)
 
     return reviews  # type: ignore[return-value]
@@ -91,6 +115,7 @@ def get_review(
     review_id: uuid.UUID,
     user_id: str | None = None,
     admin_client: Client | None = None,
+    github_login: str | None = None,
 ) -> Any | None:
     result = (
         client.table("reviews")
@@ -104,9 +129,9 @@ def get_review(
 
     active_map: dict[str, bool] = {}
     if user_id and admin_client:
-        active_map = _user_repo_active_map(admin_client, user_id)
+        active_map = _user_repo_active_map(admin_client, user_id, github_login)
         if review.get("repo_full_name") not in active_map:
-            return None  # not in user's accessible repos — treat as not found
+            return None
 
     review["repo_active"] = active_map.get(review.get("repo_full_name", ""), True)
     return review

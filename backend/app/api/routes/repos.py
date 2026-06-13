@@ -1,5 +1,6 @@
 import re
 import secrets
+import uuid
 from typing import Any, cast
 
 import httpx
@@ -146,23 +147,46 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
 @router.get("/repos")
 async def list_repos(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
+    github_login: str | None = user.user_metadata.get("user_name")
 
     owned = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
                   .eq("owner_id", str(user.id)).execute())
+    owned_ids = {r["id"] for r in owned}
 
-    member_rows = _rows(db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute())
-    member_ids = [r["repo_id"] for r in member_rows]
-    member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
+    # Member repos by user_id
+    by_uid = [r["repo_id"] for r in _rows(
+        db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute()
+    )]
+    # Also by github_login so pending-invite rows (placeholder user_id) still work
+    by_login: list[str] = []
+    if github_login:
+        by_login = [r["repo_id"] for r in _rows(
+            db.table("repo_members").select("repo_id").eq("github_login", github_login).execute()
+        )]
+
+    member_ids = list(set(by_uid + by_login) - owned_ids)
+    member_repos = _rows(db.table("repos").select("id,owner_id,full_name,connected_at,webhook_id,active")
                          .in_("id", member_ids).execute()) if member_ids else []
+
+    # Fetch owner github_login for each member repo so the UI can show "Owned by @..."
+    owner_id_set = {r["owner_id"] for r in member_repos if r.get("owner_id")}
+    owner_login_map: dict[str, str] = {}
+    if owner_id_set:
+        profiles = _rows(db.table("profiles").select("id,github_login")
+                         .in_("id", list(owner_id_set)).execute())
+        owner_login_map = {p["id"]: p.get("github_login") or "" for p in profiles}
 
     seen: set[str] = set()
     merged = []
     for repo in owned + member_repos:
         if repo["id"] not in seen:
             seen.add(repo["id"])
-            merged.append({**repo, "is_owner": repo in owned})
+            is_owner = repo["id"] in owned_ids
+            entry = {**repo, "is_owner": is_owner}
+            if not is_owner:
+                entry["owner_login"] = owner_login_map.get(repo.get("owner_id", ""), "")
+            merged.append(entry)
 
-    # Normalize NULL active → True so the frontend never gets null.
     for repo in merged:
         if repo.get("active") is None:
             repo["active"] = True
@@ -240,17 +264,17 @@ async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(ge
             )
 
     invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).maybe_single().execute())
-    invited_user_id = invited_user["id"] if invited_user else None
+    invited_user_id: str = invited_user["id"] if invited_user else str(uuid.uuid5(uuid.NAMESPACE_URL, f"pending:{body.github_login}"))
 
     db.table("repo_members").upsert({
         "repo_id": repo_id,
-        "user_id": invited_user_id or str(user.id),
+        "user_id": invited_user_id,
         "github_login": body.github_login,
         "role": body.role,
         "invited_by": str(user.id),
     }, on_conflict="repo_id,user_id").execute()
 
-    return {"invited": body.github_login, "role": body.role}
+    return {"invited": body.github_login, "found_in_system": invited_user is not None, "role": body.role}
 
 
 @router.delete("/repos/{repo_id}/members/{member_login}")
@@ -259,7 +283,10 @@ async def remove_member(repo_id: str, member_login: str, user=Depends(get_curren
     owner = db.table("repos").select("id").eq("id", repo_id).eq("owner_id", str(user.id)).execute()
     if not owner.data:
         raise HTTPException(status_code=403, detail="Only the repo owner can remove members.")
-    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", member_login).execute()
+    # Strip @ so we match both "@username" (old rows) and "username" (new rows)
+    clean = member_login.lstrip("@")
+    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", clean).execute()
+    db.table("repo_members").delete().eq("repo_id", repo_id).eq("github_login", f"@{clean}").execute()
     return {"removed": member_login}
 
 
@@ -352,19 +379,29 @@ async def admin_list_users(user=Depends(get_current_user)) -> Any:
 
 # ── admin: stats ──────────────────────────────────────────────────────────────
 
+_PLAN_PRICES: dict[str, int] = {"free": 0, "pro": 9, "team": 29}
+
+
 @router.get("/admin/stats")
 async def admin_stats(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
     _require_admin(user, db)
 
     profiles = _rows(db.table("profiles").select("plan").execute())
-    repos = _rows(db.table("repos").select("id,active").execute())
-    reviews = _rows(db.table("reviews").select("id,created_at").execute())
+    repos    = _rows(db.table("repos").select("id,active,webhook_id").execute())
+    reviews  = _rows(db.table("reviews").select("id,status,created_at").execute())
 
     plan_counts: dict[str, int] = {"free": 0, "pro": 0, "team": 0}
     for p in profiles:
-        plan = p.get("plan", "free")
+        plan = p.get("plan", "free") or "free"
         plan_counts[plan] = plan_counts.get(plan, 0) + 1
+
+    mrr = sum(_PLAN_PRICES.get(p.get("plan", "free") or "free", 0) for p in profiles)
+
+    status_counts: dict[str, int] = {}
+    for rv in reviews:
+        s = rv.get("status") or "unknown"
+        status_counts[s] = status_counts.get(s, 0) + 1
 
     return {
         "users": {
@@ -373,10 +410,31 @@ async def admin_stats(user=Depends(get_current_user)) -> Any:
         },
         "repos": {
             "total": len(repos),
-            "active": sum(1 for r in repos if r.get("active", True)),
-            "inactive": sum(1 for r in repos if not r.get("active", True)),
+            "active": sum(1 for r in repos if r.get("active") is not False),
+            "inactive": sum(1 for r in repos if r.get("active") is False),
+            "no_webhook": sum(1 for r in repos if not r.get("webhook_id")),
         },
         "reviews": {
             "total": len(reviews),
+            "by_status": status_counts,
+            "completed": status_counts.get("completed", 0),
+            "failed": status_counts.get("failed", 0),
+        },
+        "revenue": {
+            "mrr_estimate": mrr,
         },
     }
+
+
+@router.get("/admin/activity")
+async def admin_activity(user=Depends(get_current_user)) -> Any:
+    """Return the 25 most recent reviews across all users for the activity feed."""
+    db = get_supabase_admin()
+    _require_admin(user, db)
+    return _rows(
+        db.table("reviews")
+        .select("id,repo_full_name,pr_number,pr_title,status,pr_state,created_at,author_login")
+        .order("created_at", desc=True)
+        .limit(25)
+        .execute()
+    )

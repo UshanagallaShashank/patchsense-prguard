@@ -270,7 +270,8 @@ function RepoCard({
     setInviteError("")
     setInviteSuccess("")
     try {
-      const login = inviteLogin.trim()
+      // Strip leading @ so "@@username" never ends up in the DB
+      const login = inviteLogin.trim().replace(/^@+/, "")
       await inviteMember(repo.id, login)
       setInviteLogin("")
       setInviteSuccess(`@${login} added. They'll see this repo after signing in to PatchSense with GitHub.`)
@@ -338,6 +339,9 @@ function RepoCard({
             {!repo.is_owner && (
               <span className="flex items-center gap-1 text-[11px] text-zinc-500">
                 <Users className="h-3 w-3" /> Member
+                {repo.owner_login && (
+                  <span className="text-zinc-600">· owned by <span className="text-violet-400 font-mono">@{repo.owner_login}</span></span>
+                )}
               </span>
             )}
             {repo.connected_at && (
@@ -430,7 +434,8 @@ function RepoCard({
           ) : (
             <div className="space-y-1.5">
               {members.map(m => {
-                const isYou    = m.github_login === currentLogin
+                const cleanLogin = m.github_login.replace(/^@+/, "")
+                const isYou    = cleanLogin === currentLogin
                 const isOwner  = m.role === "owner"
                 const canRemove = !isYou && !isOwner
                 return (
@@ -444,7 +449,7 @@ function RepoCard({
                     )}
                   >
                     <span className="text-[12px] text-zinc-300 font-mono flex-1">
-                      @{m.github_login}
+                      @{cleanLogin}
                     </span>
                     {isYou && (
                       <span className="text-[10px] text-violet-400 font-medium">You</span>
@@ -456,7 +461,7 @@ function RepoCard({
                       {m.role}
                     </span>
                     <button
-                      onClick={() => canRemove && handleRemove(m.github_login)}
+                      onClick={() => canRemove && handleRemove(cleanLogin)}
                       disabled={removing === m.github_login || !canRemove}
                       className={cn(
                         "ml-1 transition-colors",
@@ -466,7 +471,7 @@ function RepoCard({
                       )}
                       title={canRemove ? "Remove member" : isOwner ? "Cannot remove owner" : "Cannot remove yourself"}
                     >
-                      {removing === m.github_login
+                      {removing === cleanLogin
                         ? <Loader2 className="h-3 w-3 animate-spin" />
                         : <UserMinus className="h-3 w-3" />
                       }

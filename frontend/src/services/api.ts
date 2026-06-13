@@ -92,6 +92,7 @@ export interface ConnectedRepo {
   webhook_id: number | null;
   active: boolean;
   is_owner: boolean;
+  owner_login?: string;
 }
 
 export async function fetchRepos(): Promise<ConnectedRepo[]> {
@@ -221,8 +222,20 @@ export interface AdminUser {
 
 export interface AdminStats {
   users: { total: number; by_plan: Record<string, number> };
-  repos: { total: number; active: number; inactive: number };
-  reviews: { total: number };
+  repos: { total: number; active: number; inactive: number; no_webhook: number };
+  reviews: { total: number; completed: number; failed: number; by_status: Record<string, number> };
+  revenue: { mrr_estimate: number };
+}
+
+export interface AdminActivity {
+  id: string;
+  repo_full_name: string;
+  pr_number: number;
+  pr_title: string | null;
+  status: string;
+  pr_state: string | null;
+  created_at: string;
+  author_login: string | null;
 }
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
@@ -233,6 +246,12 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
 
 export async function fetchAdminStats(): Promise<AdminStats> {
   const res = await fetch(`${BASE}/admin/stats`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
+export async function fetchAdminActivity(): Promise<AdminActivity[]> {
+  const res = await fetch(`${BASE}/admin/activity`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
 }

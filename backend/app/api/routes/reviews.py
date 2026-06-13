@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import Client
@@ -15,6 +15,30 @@ from app.schemas.review_schema import ReviewOut
 from app.services.review_service import get_review, list_reviews
 
 router = APIRouter(prefix="/api")
+
+
+async def _get_stream_user(
+    token: str | None = Query(None),
+    authorization: str | None = Header(None),
+):
+    """Auth for SSE endpoints: accepts JWT via ?token= query param (EventSource
+    cannot send custom headers) or the standard Authorization header."""
+    raw: str | None = None
+    if token:
+        raw = token
+    elif authorization and authorization.startswith("Bearer "):
+        raw = authorization.removeprefix("Bearer ").strip()
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        resp = get_supabase_admin().auth.get_user(raw)
+        if not resp or not resp.user:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        return resp.user
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def _require_repo_active(repo_full_name: str) -> None:
@@ -33,14 +57,19 @@ def get_reviews(
     client: Client = Depends(get_supabase),
     user=Depends(get_current_user),
 ) -> Any:
-    return list_reviews(client, page, user_id=str(user.id), admin_client=get_supabase_admin())
+    return list_reviews(
+        client, page,
+        user_id=str(user.id),
+        admin_client=get_supabase_admin(),
+        github_login=user.user_metadata.get("user_name"),
+    )
 
 
 @router.get("/reviews/stream")
 async def stream_reviews(
     request: Request,
     client: Client = Depends(get_supabase),
-    user=Depends(get_current_user),
+    user=Depends(_get_stream_user),
 ) -> StreamingResponse:
     user_id = str(user.id)
 
@@ -50,7 +79,8 @@ async def stream_reviews(
             if await request.is_disconnected():
                 break
             try:
-                data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin())
+                gh_login = user.user_metadata.get("user_name")
+                data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin(), github_login=gh_login)
                 serialized = json.dumps(data, default=str)
                 h = hashlib.md5(serialized.encode()).hexdigest()
                 if h != last_hash:
@@ -73,7 +103,12 @@ def get_review_by_id(
     client: Client = Depends(get_supabase),
     user=Depends(get_current_user),
 ) -> Any:
-    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
+    review = get_review(
+        client, review_id,
+        user_id=str(user.id),
+        admin_client=get_supabase_admin(),
+        github_login=user.user_metadata.get("user_name"),
+    )
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
