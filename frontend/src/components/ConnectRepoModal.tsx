@@ -202,42 +202,61 @@ function Slide2({ userLogin }: { userLogin?: string }) {
   )
 }
 
-function Slide3() {
+function Slide3({ userLogin }: { userLogin?: string }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3">
-        <div className="h-9 w-9 rounded-lg bg-violet-950/60 border border-violet-800/40 flex items-center justify-center shrink-0 mt-0.5">
-          <Webhook className="h-4 w-4 text-violet-400" />
+    <div className="flex flex-col gap-3">
+      {/* Auth token status */}
+      <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3">
+        <div className="flex items-center gap-2 mb-2.5">
+          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+          <p className="text-sm font-semibold text-emerald-300">GitHub token active</p>
+          {userLogin && <span className="ml-auto font-mono text-[11px] text-zinc-400">@{userLogin}</span>}
         </div>
-        <div>
-          <p className="text-sm font-semibold text-zinc-100">Automatic webhook install</p>
-          <p className="text-[12px] text-zinc-400 mt-1 leading-relaxed">
-            PatchSense uses the GitHub API to install the webhook on your behalf — you don't need to touch GitHub settings.
-          </p>
+        <p className="text-[11px] text-zinc-400 leading-relaxed mb-2">
+          PatchSense uses <strong className="text-zinc-300">your GitHub OAuth token</strong> from login to install the webhook — no separate setup needed.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {[
+            { scope: "repo",            desc: "Read/write repo access" },
+            { scope: "admin:repo_hook", desc: "Install & manage webhooks" },
+            { scope: "read:user",       desc: "Read your GitHub profile" },
+            { scope: "user:email",      desc: "Read your email address" },
+          ].map(({ scope, desc }) => (
+            <div key={scope} className="flex items-start gap-1.5 text-[11px]">
+              <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
+              <div>
+                <code className="text-emerald-300/80">{scope}</code>
+                <p className="text-zinc-600">{desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
+      {/* Webhook details */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 space-y-2">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Webhook details (auto-configured)</p>
-        <div className="flex flex-col gap-1.5 text-[12px]">
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-600 w-24 shrink-0">Payload URL</span>
-            <code className="text-zinc-300 font-mono text-[11px] break-all">{WEBHOOK_URL}</code>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-600 w-24 shrink-0">Content type</span>
-            <code className="text-zinc-300 font-mono">application/json</code>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-600 w-24 shrink-0">Events</span>
-            <code className="text-zinc-300 font-mono">pull_request</code>
-          </div>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Webhook auto-configured as</p>
+        <div className="flex flex-col gap-2 text-[12px]">
+          {[
+            { label: "Payload URL",  value: WEBHOOK_URL,          mono: true  },
+            { label: "Content type", value: "application/json",   mono: true  },
+            { label: "Events",       value: "pull_request only",  mono: false },
+            { label: "Secret",       value: "unique per repo (auto-generated)", mono: false },
+          ].map(({ label, value, mono }) => (
+            <div key={label} className="flex items-start gap-3">
+              <span className="text-zinc-600 w-24 shrink-0 pt-0.5">{label}</span>
+              {mono
+                ? <code className="text-zinc-300 font-mono text-[11px] break-all leading-relaxed">{value}</code>
+                : <span className="text-zinc-400 text-[11px]">{value}</span>
+              }
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="flex items-start gap-2.5 text-[12px] text-zinc-400">
-        <KeyRound className="h-3.5 w-3.5 text-zinc-500 shrink-0 mt-0.5" />
-        A unique secret is generated per repo and stored securely — never shared in plain text.
+      <div className="flex items-start gap-2 text-[11px] text-zinc-500">
+        <KeyRound className="h-3.5 w-3.5 shrink-0 mt-0.5 text-zinc-600" />
+        The secret is stored in our database encrypted per repo — it's never shown in plain text anywhere.
       </div>
     </div>
   )
@@ -474,7 +493,7 @@ export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
           {/* ── Setup slides ──────────────────────── */}
           {step === "s1" && <Slide1 />}
           {step === "s2" && <Slide2 userLogin={userLogin} />}
-          {step === "s3" && <Slide3 />}
+          {step === "s3" && <Slide3 userLogin={userLogin} />}
           {step === "s4" && <Slide4 />}
           {step === "s5" && <Slide5 selectedPlan={selectedPlan} onPlanChange={setSelectedPlan} />}
           {step === "s6" && <Slide6 />}

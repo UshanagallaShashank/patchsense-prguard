@@ -101,9 +101,17 @@ export async function fetchRepos(): Promise<ConnectedRepo[]> {
 }
 
 export async function connectRepo(repoUrl: string): Promise<{ full_name: string; status: string }> {
+  const { data } = await supabase.auth.getSession();
+  // Forward the user's GitHub OAuth token so the backend uses their own credentials
+  // for webhook installation (requires repo + admin:repo_hook scopes, granted at login).
+  const githubToken = data.session?.provider_token;
   const res = await fetch(`${BASE}/repos/connect`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+      ...(githubToken ? { "X-GitHub-Token": githubToken } : {}),
+    },
     body: JSON.stringify({ repo_url: repoUrl }),
   });
   if (!res.ok) throw new Error(await extractError(res));
