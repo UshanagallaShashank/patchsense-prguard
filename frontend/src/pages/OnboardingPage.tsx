@@ -99,12 +99,15 @@ export function OnboardingPage() {
           )}
         </div>
 
-        <p className="text-center text-zinc-600 text-xs mt-6">
-          You need admin access to the repo to install the webhook.{" "}
-          <button onClick={() => navigate("/")} className="text-zinc-400 hover:text-zinc-200 underline underline-offset-2">
-            Skip for now
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <button
+            onClick={() => navigate("/")}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 hover:bg-zinc-900 transition-all"
+          >
+            Skip for now →
           </button>
-        </p>
+          <p className="text-[11px] text-zinc-700">You need admin access to the repo to install the webhook.</p>
+        </div>
       </div>
     </div>
   );

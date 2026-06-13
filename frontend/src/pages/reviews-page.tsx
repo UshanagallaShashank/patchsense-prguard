@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle, LayoutDashboard } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle, LayoutDashboard, PowerOff } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
@@ -68,8 +68,9 @@ function SettingsDrawer({
   onConnectRepo: () => void
   onRepoDisconnected: () => void
 }) {
-  const { profile, user } = useAuth()
+  const { profile, user, refreshProfile } = useAuth()
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [savingPlan, setSavingPlan]       = useState(false)
 
   async function handleDisconnect(repoId: string) {
     setDisconnecting(repoId)
@@ -85,6 +86,27 @@ function SettingsDrawer({
     }
   }
 
+  async function handlePlanChange(plan: string) {
+    if (plan === profile?.plan) return
+    setSavingPlan(true)
+    try {
+      const { updateMyPlan } = await import("../services/api")
+      await updateMyPlan(plan)
+      await refreshProfile()
+      toast.success(`Switched to ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`)
+    } catch {
+      toast.error("Could not update plan")
+    } finally {
+      setSavingPlan(false)
+    }
+  }
+
+  const PLAN_OPTIONS = [
+    { key: "free",  label: "Free",  desc: "1 repo · 50 reviews/mo",    color: "text-zinc-400",  border: "border-zinc-700",    bg: "bg-zinc-800/60"      },
+    { key: "pro",   label: "Pro",   desc: "10 repos · Unlimited",       color: "text-violet-400", border: "border-violet-700/60", bg: "bg-violet-950/40" },
+    { key: "team",  label: "Team",  desc: "Unlimited repos & members",   color: "text-blue-400",  border: "border-blue-700/60",   bg: "bg-blue-950/40"  },
+  ]
+
   return (
     <Sheet open={open} onOpenChange={v => { if (!v) onClose() }}>
       <SheetContent className="flex flex-col gap-0 overflow-y-auto">
@@ -93,7 +115,7 @@ function SettingsDrawer({
             <Settings className="h-4 w-4 text-muted-foreground" />
             Settings
           </SheetTitle>
-          <SheetDescription>Manage your connected repos and account.</SheetDescription>
+          <SheetDescription>Manage your account, plan, and connected repos.</SheetDescription>
         </SheetHeader>
 
         {/* Account */}
@@ -112,6 +134,38 @@ function SettingsDrawer({
                 {profile.plan}
               </span>
             )}
+          </div>
+        </div>
+
+        {/* Plan switcher */}
+        <div className="py-5 border-b border-border">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Plan</p>
+            {savingPlan && <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />}
+          </div>
+          <div className="flex flex-col gap-2">
+            {PLAN_OPTIONS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => handlePlanChange(p.key)}
+                disabled={savingPlan}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all",
+                  profile?.plan === p.key
+                    ? `${p.border} ${p.bg}`
+                    : "border-border hover:border-zinc-700 bg-background hover:bg-zinc-900/60"
+                )}
+              >
+                <div className={cn("h-2 w-2 rounded-full shrink-0", profile?.plan === p.key ? p.color.replace("text-", "bg-") : "bg-zinc-700")} />
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-sm font-semibold", profile?.plan === p.key ? p.color : "text-foreground")}>{p.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{p.desc}</p>
+                </div>
+                {profile?.plan === p.key && (
+                  <span className="text-[10px] font-semibold text-muted-foreground">Current</span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -397,7 +451,7 @@ function DiffViewer({ patch }: { patch: string }) {
 
 /* ── FindingRow ──────────────────────────────────────────────── */
 
-function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
+function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string; repoActive: boolean }) {
   const [open, setOpen]           = useState(false)
   const [patch, setPatch]         = useState<string | null>(f.patch ?? null)
   const [generating, setGen]      = useState(false)
@@ -467,7 +521,13 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
               <p className="text-sm text-foreground/80 leading-relaxed">{f.message}</p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={e => e.stopPropagation()}>
-              <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleGenerateFix} disabled={generating}>
+              <Button
+                size="sm" variant="outline"
+                className="h-6 text-[10px] px-2 gap-1"
+                onClick={handleGenerateFix}
+                disabled={generating || !repoActive}
+                title={!repoActive ? "Repo is paused — resume it to generate fixes" : undefined}
+              >
                 {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                 {patch ? "Regen" : "Fix"}
               </Button>
@@ -494,7 +554,8 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
                     size="sm" variant="outline"
                     className="h-7 text-xs gap-1.5 border-green-900/50 text-green-400 hover:bg-green-950/40"
                     onClick={() => { setApplyMode("commit"); setApplyConfirm(true); setFixReviewed(false) }}
-                    disabled={!!applying}
+                    disabled={!!applying || !repoActive}
+                    title={!repoActive ? "Repo is paused — resume it to apply fixes" : undefined}
                   >
                     {applying === "commit" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                     Commit to branch
@@ -503,7 +564,8 @@ function FindingRow({ f, reviewId }: { f: Finding; reviewId: string }) {
                     size="sm" variant="outline"
                     className="h-7 text-xs gap-1.5 border-blue-900/50 text-blue-400 hover:bg-blue-950/40"
                     onClick={() => { setApplyMode("pr"); setApplyConfirm(true); setFixReviewed(false) }}
-                    disabled={!!applying}
+                    disabled={!!applying || !repoActive}
+                    title={!repoActive ? "Repo is paused — resume it to apply fixes" : undefined}
                   >
                     {applying === "pr" ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitPullRequest className="h-3 w-3" />}
                     Open fix PR
@@ -640,6 +702,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   {hasConflicts && (!r.pr_state || r.pr_state === "open") && (
                     <Badge className="text-[10px] text-amber-400 bg-amber-950/40 border-amber-900/40 rounded-full">⚠ Conflicts</Badge>
                   )}
+                  {!r.repo_active && (
+                    <Badge className="text-[10px] text-zinc-400 bg-zinc-800/60 border-zinc-700/60 rounded-full">⏸ Paused</Badge>
+                  )}
                   {r.head_branch && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
                       <GitBranch className="h-3 w-3 shrink-0" />
@@ -685,7 +750,18 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   )}
                   <span className="text-[11px] text-muted-foreground/60 ml-auto">{timeAgo(r.created_at)}</span>
                   {(!r.pr_state || r.pr_state === "open") && r.status === "completed" && (
-                    hasConflicts ? (
+                    !r.repo_active ? (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-2 gap-1 border-zinc-700 text-zinc-500 shrink-0 opacity-60 cursor-not-allowed"
+                        onClick={e => e.stopPropagation()}
+                        disabled
+                        title="Repo is paused — resume it in Settings → Repos to merge"
+                      >
+                        <PowerOff className="h-3 w-3" />
+                        Paused
+                      </Button>
+                    ) : hasConflicts ? (
                       <Button
                         size="sm" variant="outline"
                         className="h-6 text-[10px] px-2 gap-1 border-amber-900/50 text-amber-400 shrink-0 opacity-70 cursor-not-allowed"
@@ -749,7 +825,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                   : agentFilter === "all" ? "🎉 No code issues found by AI" : `No ${agentFilter} findings`}
               </p>
             ) : (
-              findings.map(f => <FindingRow key={f.id} f={f} reviewId={r.id} />)
+              findings.map(f => <FindingRow key={f.id} f={f} reviewId={r.id} repoActive={r.repo_active} />)
             )}
           </div>
         </CollapsibleContent>
@@ -824,6 +900,8 @@ export function ReviewsPage() {
   const [agentFilter, setAgentFilter]     = useState("all")
   const [statusFilter, setStatusFilter]   = useState("all")
   const [prStateFilter, setPrStateFilter] = useState<"open" | "merged" | "all">("open")
+  const [repoFilter, setRepoFilter]       = useState("all")
+  const [repoStatusFilter, setRepoStatusFilter] = useState<"all" | "active" | "paused">("all")
   const [showSettings, setShowSettings]   = useState(false)
   const [showUserMenu, setShowUserMenu]   = useState(false)
   const [showConnect, setShowConnect]     = useState(false)
@@ -856,15 +934,35 @@ export function ReviewsPage() {
   const hasActive = reviews.some(r => r.status === "pending" || r.status === "running")
   const hasFailed = reviews.some(r => r.status === "failed")
 
+  // Unique repos seen in reviews, with their active status
+  const uniqueRepos = Array.from(
+    reviews.reduce((m, r) => {
+      if (!m.has(r.repo_full_name)) m.set(r.repo_full_name, r.repo_active)
+      return m
+    }, new Map<string, boolean>()).entries()
+  ).map(([full_name, active]) => ({ full_name, active }))
+
   const byPrState = prStateFilter === "all"
     ? reviews
     : prStateFilter === "open"
       ? reviews.filter(r => !r.pr_state || r.pr_state === "open")
       : reviews.filter(r => r.pr_state === "merged" || r.pr_state === "closed")
 
-  const filteredReviews = statusFilter === "all"
+  const byStatus = statusFilter === "all"
     ? byPrState
     : byPrState.filter(r => r.status === statusFilter)
+
+  const byRepo = repoFilter === "all"
+    ? byStatus
+    : byStatus.filter(r => r.repo_full_name === repoFilter)
+
+  const filteredReviews = repoStatusFilter === "all"
+    ? byRepo
+    : repoStatusFilter === "active"
+      ? byRepo.filter(r => r.repo_active)
+      : byRepo.filter(r => !r.repo_active)
+
+  const selectedRepoPaused = repoFilter !== "all" && uniqueRepos.find(r => r.full_name === repoFilter)?.active === false
 
   return (
     <div className="min-h-screen bg-background">
@@ -1016,54 +1114,156 @@ export function ReviewsPage() {
           </div>
         )}
 
-        {/* Status filter */}
+        {/* Filter panel */}
         {!loading && reviews.length > 0 && (
-          <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-2.5">
-            <TabsList className="h-8 gap-1 bg-transparent p-0 flex-wrap justify-start">
-              {[
-                { key: "all",       label: "All"       },
-                { key: "pending",   label: "Pending"   },
-                { key: "running",   label: "Running"   },
-                { key: "completed", label: "Reviewed"  },
-                { key: "failed",    label: "Failed"    },
-              ].map(f => {
-                const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length
-                return (
-                  <TabsTrigger key={f.key} value={f.key}
-                    className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+          <div className="rounded-xl border border-border bg-card/40 px-4 py-3.5 mb-5 space-y-3">
+
+            {/* Repo filter */}
+            {uniqueRepos.length > 1 && (
+              <div className="flex items-start gap-3">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-12 shrink-0">Repo</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setRepoFilter("all")}
+                    className={cn(
+                      "h-7 px-3 rounded-full border text-xs font-medium transition-colors",
+                      repoFilter === "all"
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    All repos
+                    <span className="ml-1.5 text-[10px] opacity-60">{reviews.length}</span>
+                  </button>
+                  {uniqueRepos.map(repo => (
+                    <button
+                      key={repo.full_name}
+                      onClick={() => setRepoFilter(repo.full_name)}
+                      className={cn(
+                        "h-7 px-3 rounded-full border text-xs font-medium transition-colors flex items-center gap-1.5",
+                        repoFilter === repo.full_name
+                          ? repo.active
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-zinc-600 bg-zinc-800/60 text-zinc-300"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {repo.active
+                        ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        : <PowerOff className="h-3 w-3 text-zinc-500 shrink-0" />
+                      }
+                      {repo.full_name.split("/")[1]}
+                      <span className="text-[10px] opacity-60">
+                        {reviews.filter(r => r.repo_full_name === repo.full_name).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Repo status filter */}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-12 shrink-0">State</span>
+              <div className="flex gap-1.5">
+                {([
+                  { key: "all",    label: "All"    },
+                  { key: "active", label: "Active" },
+                  { key: "paused", label: "Paused" },
+                ] as const).map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setRepoStatusFilter(f.key)}
+                    className={cn(
+                      "h-7 px-3 rounded-full border text-xs font-medium transition-colors",
+                      repoStatusFilter === f.key
+                        ? f.key === "paused"
+                          ? "border-zinc-600 bg-zinc-800/60 text-zinc-300"
+                          : "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    )}
                   >
                     {f.label}
-                    <Badge variant="secondary" className="text-[10px] h-4 min-w-[18px] px-1">{count}</Badge>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Separator */}
+            <div className="border-t border-border/50" />
+
+            {/* Review status filter */}
+            <div className="flex items-start gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-12 shrink-0">Status</span>
+              <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+                <TabsList className="h-8 gap-1 bg-transparent p-0 flex-wrap justify-start">
+                  {[
+                    { key: "all",       label: "All"      },
+                    { key: "pending",   label: "Pending"  },
+                    { key: "running",   label: "Running"  },
+                    { key: "completed", label: "Reviewed" },
+                    { key: "failed",    label: "Failed"   },
+                  ].map(f => {
+                    const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length
+                    return (
+                      <TabsTrigger key={f.key} value={f.key}
+                        className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                      >
+                        {f.label}
+                        <Badge variant="secondary" className="text-[10px] h-4 min-w-[18px] px-1">{count}</Badge>
+                      </TabsTrigger>
+                    )
+                  })}
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Agent filter */}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-12 shrink-0">Agent</span>
+              <Tabs value={agentFilter} onValueChange={setAgentFilter}>
+                <TabsList className="h-8 gap-1 bg-transparent p-0">
+                  <TabsTrigger value="all"
+                    className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                  >
+                    <LayoutGrid className="h-3 w-3" /> All
                   </TabsTrigger>
-                )
-              })}
-            </TabsList>
-          </Tabs>
+                  {([
+                    { key: "security",    label: "Security",    icon: Shield   },
+                    { key: "performance", label: "Performance", icon: Zap      },
+                    { key: "style",       label: "Style",       icon: Sparkles },
+                  ] as const).map(f => (
+                    <TabsTrigger key={f.key} value={f.key}
+                      className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                    >
+                      <f.icon className="h-3 w-3" />
+                      {f.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
+
+          </div>
         )}
 
-        {/* Agent filter */}
-        {!loading && reviews.length > 0 && (
-          <Tabs value={agentFilter} onValueChange={setAgentFilter} className="mb-5">
-            <TabsList className="h-8 gap-1 bg-transparent p-0">
-              <TabsTrigger value="all"
-                className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
-              >
-                <LayoutGrid className="h-3 w-3" /> All
-              </TabsTrigger>
-              {([
-                { key: "security",    label: "Security",    icon: Shield   },
-                { key: "performance", label: "Performance", icon: Zap      },
-                { key: "style",       label: "Style",       icon: Sparkles },
-              ] as const).map(f => (
-                <TabsTrigger key={f.key} value={f.key}
-                  className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
-                >
-                  <f.icon className="h-3 w-3" />
-                  {f.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+        {/* Paused repo notice */}
+        {selectedRepoPaused && (
+          <Card className="mb-4 border-zinc-700/60 bg-zinc-900/40">
+            <CardContent className="px-4 py-3 flex items-center gap-3">
+              <PowerOff className="h-4 w-4 text-zinc-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-zinc-300">This repo is paused</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  New PRs won't be reviewed. Fix and merge actions are disabled. Resume in{" "}
+                  <button onClick={() => navigate("/repos")} className="text-primary underline underline-offset-2">
+                    Settings → Repos
+                  </button>
+                  .
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Loading skeleton */}
@@ -1142,9 +1342,15 @@ export function ReviewsPage() {
         )}
 
         {!loading && !error && filteredReviews.length === 0 && reviews.length > 0 && (
-          <div className="flex flex-col items-center py-12 text-muted-foreground">
-            <span className="text-3xl mb-3">🔍</span>
-            <p className="text-sm">No {statusFilter} reviews</p>
+          <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
+            <span className="text-3xl">🔍</span>
+            <p className="text-sm">No reviews match the current filters</p>
+            <button
+              onClick={() => { setRepoFilter("all"); setRepoStatusFilter("all"); setStatusFilter("all"); setAgentFilter("all") }}
+              className="text-xs text-primary hover:underline"
+            >
+              Clear all filters
+            </button>
           </div>
         )}
 
