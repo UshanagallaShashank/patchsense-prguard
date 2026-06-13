@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import Client
 
+from app.core.auth import get_current_user
 from app.core.supabase_client import get_supabase, get_supabase_admin
 from app.schemas.review_schema import ReviewOut
 from app.services.review_service import get_review, list_reviews
@@ -19,14 +20,21 @@ router = APIRouter(prefix="/api")
 # ── list / get ────────────────────────────────────────────────────────────────
 
 @router.get("/reviews", response_model=list[ReviewOut])
-def get_reviews(page: int = 1, client: Client = Depends(get_supabase)) -> Any:
-    return list_reviews(client, page)
+def get_reviews(
+    page: int = 1,
+    client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
+) -> Any:
+    return list_reviews(client, page, user_id=str(user.id), admin_client=get_supabase_admin())
 
 
-# Must be declared BEFORE /{review_id} so "stream" isn't treated as a UUID path param
 @router.get("/reviews/stream")
-async def stream_reviews(request: Request, client: Client = Depends(get_supabase)) -> StreamingResponse:
-    """SSE endpoint — pushes a data event whenever the reviews list changes (~3s latency)."""
+async def stream_reviews(
+    request: Request,
+    client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
+) -> StreamingResponse:
+    user_id = str(user.id)
 
     async def generator() -> AsyncGenerator[str, None]:
         last_hash = ""
@@ -34,7 +42,7 @@ async def stream_reviews(request: Request, client: Client = Depends(get_supabase
             if await request.is_disconnected():
                 break
             try:
-                data = list_reviews(client, page=1)
+                data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin())
                 serialized = json.dumps(data, default=str)
                 h = hashlib.md5(serialized.encode()).hexdigest()
                 if h != last_hash:
@@ -52,8 +60,12 @@ async def stream_reviews(request: Request, client: Client = Depends(get_supabase
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewOut)
-def get_review_by_id(review_id: uuid.UUID, client: Client = Depends(get_supabase)) -> Any:
-    review = get_review(client, review_id)
+def get_review_by_id(
+    review_id: uuid.UUID,
+    client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
+) -> Any:
+    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
@@ -66,11 +78,12 @@ async def generate_fix(
     review_id: uuid.UUID,
     finding_id: uuid.UUID,
     client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
 ) -> Any:
     from app.agents.fix_agent import generate_fix as ai_fix
     from app.services.github_service import get_file
 
-    review = get_review(client, review_id)
+    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
@@ -95,9 +108,7 @@ async def generate_fix(
     if not patch:
         raise HTTPException(status_code=422, detail="AI could not generate a valid patch")
 
-    # Persist patch — admin client bypasses RLS so the write isn't silently dropped
     get_supabase_admin().table("findings").update({"patch": patch}).eq("id", str(finding_id)).execute()
-
     return {"patch": patch, "file_path": file_path}
 
 
@@ -112,13 +123,14 @@ class ApplyFixRequest(BaseModel):
 def apply_fix(
     review_id: uuid.UUID,
     body: ApplyFixRequest,
+    user=Depends(get_current_user),
 ) -> Any:
     from app.services.github_service import (
         get_file, commit_patch, create_branch, create_fix_pr, apply_patch_to_content
     )
 
-    # admin client so RLS doesn't hide the persisted patch field
-    review = get_review(get_supabase_admin(), review_id)
+    admin = get_supabase_admin()
+    review = get_review(admin, review_id, user_id=str(user.id), admin_client=admin)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
@@ -138,7 +150,6 @@ def apply_fix(
 
     file_content, sha = get_file(repo, file_path, branch)
     new_content = apply_patch_to_content(file_content, patch)
-
     commit_msg = f"fix: {finding['message'][:72]} (PatchSense auto-fix)"
 
     if body.mode == "pr":
@@ -159,20 +170,18 @@ def apply_fix(
         return {"mode": "commit", "branch": branch, "file": file_path}
 
 
-# ── merge PR ─────────────────────────────────────────────────────────────────
-
 # ── conflict details ─────────────────────────────────────────────────────────
 
 @router.get("/reviews/{review_id}/conflict-details")
 def get_conflict_details(
     review_id: uuid.UUID,
     client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
 ) -> Any:
-    """For each conflicting file, return both the PR branch content and the base
-    branch content. If conflict_files wasn't stored (old review), fetches live from GitHub."""
     from app.services.github_service import get_file, get_pr, get_pr_files
+    import difflib
 
-    review = get_review(client, review_id)
+    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
@@ -185,7 +194,6 @@ def get_conflict_details(
     if not head_branch:
         return {"head_branch": "", "base_branch": base_branch, "files": []}
 
-    # If conflict_files weren't stored (stale review), fetch live and persist
     if not conflict_files:
         try:
             pr_meta = get_pr(repo, pr_number, wait_for_mergeable=True)
@@ -198,8 +206,6 @@ def get_conflict_details(
                 }).eq("id", str(review_id)).execute()
         except Exception:
             pass
-
-    import difflib
 
     files = []
     for path in conflict_files:
@@ -222,7 +228,6 @@ def get_conflict_details(
                 lineterm="",
             ))
             entry["diff"] = "".join(diff_lines)
-
         files.append(entry)
 
     return {"head_branch": head_branch, "base_branch": base_branch, "files": files}
@@ -234,17 +239,17 @@ def get_conflict_details(
 def merge_review_pr(
     review_id: uuid.UUID,
     client: Client = Depends(get_supabase),
+    user=Depends(get_current_user),
 ) -> Any:
     from app.services.github_service import get_pr, merge_pr
 
-    review = get_review(client, review_id)
+    review = get_review(client, review_id, user_id=str(user.id), admin_client=get_supabase_admin())
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
     if review.get("pr_state") != "open":
         raise HTTPException(status_code=400, detail="PR is not open")
 
-    # Check mergeability before attempting — GitHub returns 405 on conflicting PRs
     try:
         pr = get_pr(review["repo_full_name"], review["pr_number"], wait_for_mergeable=True)
     except Exception:

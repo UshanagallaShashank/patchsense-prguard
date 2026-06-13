@@ -1,8 +1,6 @@
 import type { Review } from "../types/review";
 import { supabase } from "../lib/supabase";
 
-// VITE_API_URL: set to backend origin in production (e.g. https://your-app.onrender.com)
-// Leave unset for local dev — Vite proxy rewrites /api → http://localhost:8000
 export const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -92,6 +90,8 @@ export interface ConnectedRepo {
   full_name: string;
   connected_at: string;
   webhook_id: number | null;
+  active: boolean;
+  is_owner: boolean;
 }
 
 export async function fetchRepos(): Promise<ConnectedRepo[]> {
@@ -102,8 +102,6 @@ export async function fetchRepos(): Promise<ConnectedRepo[]> {
 
 export async function connectRepo(repoUrl: string): Promise<{ full_name: string; status: string }> {
   const { data } = await supabase.auth.getSession();
-  // Forward the user's GitHub OAuth token so the backend uses their own credentials
-  // for webhook installation (requires repo + admin:repo_hook scopes, granted at login).
   const githubToken = data.session?.provider_token;
   const res = await fetch(`${BASE}/repos/connect`, {
     method: "POST",
@@ -116,6 +114,15 @@ export async function connectRepo(repoUrl: string): Promise<{ full_name: string;
   });
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
+}
+
+export async function toggleRepoActive(repoId: string, active: boolean): Promise<void> {
+  const res = await fetch(`${BASE}/repos/${repoId}/active`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ active }),
+  });
+  if (!res.ok) throw new Error(await extractError(res));
 }
 
 export async function disconnectRepo(repoId: string): Promise<void> {
@@ -164,7 +171,7 @@ export interface Me {
   github_login: string;
   avatar_url: string;
   plan: "free" | "pro" | "team";
-  bypass_plan: boolean;
+  is_admin: boolean;
 }
 
 export async function fetchMe(): Promise<Me> {
@@ -182,11 +189,50 @@ export async function updateMyPlan(plan: string): Promise<void> {
   if (!res.ok) throw new Error(await extractError(res));
 }
 
-export async function adminSetPlan(userId: string, plan: string, bypassPlan = false): Promise<void> {
+export async function adminSetPlan(userId: string, plan: string): Promise<void> {
   const res = await fetch(`${BASE}/admin/set-plan`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ user_id: userId, plan, bypass_plan: bypassPlan }),
+    body: JSON.stringify({ user_id: userId, plan }),
   });
   if (!res.ok) throw new Error(await extractError(res));
+}
+
+// ── admin ─────────────────────────────────────────────────────────────────────
+
+export interface AdminRepo {
+  id: string;
+  full_name: string;
+  active: boolean;
+  connected_at: string;
+  review_count: number;
+}
+
+export interface AdminUser {
+  id: string;
+  github_login: string | null;
+  github_avatar_url: string | null;
+  plan: string;
+  is_admin: boolean;
+  created_at: string;
+  repo_count: number;
+  repos: AdminRepo[];
+}
+
+export interface AdminStats {
+  users: { total: number; by_plan: Record<string, number> };
+  repos: { total: number; active: number; inactive: number };
+  reviews: { total: number };
+}
+
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const res = await fetch(`${BASE}/admin/users`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
+export async function fetchAdminStats(): Promise<AdminStats> {
+  const res = await fetch(`${BASE}/admin/stats`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
 }

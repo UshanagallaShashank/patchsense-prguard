@@ -12,7 +12,6 @@ from app.core.supabase_client import get_supabase_admin
 
 
 def _row(result: Any) -> dict[str, Any] | None:
-    """Safely extract a single-row dict from a Supabase response."""
     data = result.data if hasattr(result, "data") else result
     if isinstance(data, dict):
         return cast(dict[str, Any], data)
@@ -20,11 +19,11 @@ def _row(result: Any) -> dict[str, Any] | None:
 
 
 def _rows(result: Any) -> list[dict[str, Any]]:
-    """Safely extract a list of rows from a Supabase response."""
     data = result.data if hasattr(result, "data") else result
     if isinstance(data, list):
         return cast(list[dict[str, Any]], data)
     return []
+
 
 router = APIRouter(prefix="/api")
 
@@ -41,13 +40,18 @@ def _gh_headers(token: str) -> dict[str, str]:
 
 def _parse_full_name(raw: str) -> str:
     raw = raw.strip().rstrip("/")
-    # Accept full URL or owner/repo
     m = re.search(r"github\.com[:/]([\w.\-]+/[\w.\-]+?)(?:\.git)?$", raw)
     if m:
         return m.group(1)
     if re.fullmatch(r"[\w.\-]+/[\w.\-]+", raw):
         return raw
     raise ValueError(f"Cannot parse repo: {raw!r}")
+
+
+def _require_admin(user: Any, db: Any) -> None:
+    prof = _row(db.table("profiles").select("is_admin").eq("id", str(user.id)).maybe_single().execute()) or {}
+    if not prof.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin only.")
 
 
 # ── connect repo ──────────────────────────────────────────────────────────────
@@ -60,14 +64,12 @@ class ConnectRepoRequest(BaseModel):
 async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
 
-    # resolve plan + bypass
-    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("plan,is_admin").eq("id", str(user.id)).maybe_single().execute()) or {}
     plan: str = str(prof_data.get("plan", "free"))
-    bypass: bool = bool(prof_data.get("bypass_plan", False))
+    is_admin: bool = bool(prof_data.get("is_admin", False))
 
-    # check repo limit
     limit = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["repos"]
-    if limit is not None and not bypass:
+    if limit is not None and not is_admin:
         existing = _rows(db.table("repos").select("id").eq("owner_id", str(user.id)).execute())
         if len(existing) >= limit:
             raise HTTPException(
@@ -80,17 +82,11 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # Prefer the user's own GitHub OAuth token (forwarded from the frontend session).
-    # This ensures the webhook is installed using their credentials and scopes.
-    # Falls back to the server PAT if the token wasn't forwarded.
     gh_token = request.headers.get("X-GitHub-Token") or settings.github_pat
-
-    # install webhook on GitHub
     webhook_secret = secrets.token_hex(32)
     webhook_url = f"{settings.render_external_url}/webhook"
 
     async with httpx.AsyncClient() as client:
-        # verify repo exists and user has admin access
         repo_resp = await client.get(
             f"https://api.github.com/repos/{full_name}",
             headers=_gh_headers(gh_token),
@@ -104,7 +100,6 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
         if not repo_data.get("permissions", {}).get("admin"):
             raise HTTPException(status_code=403, detail="You need admin access to this repo to install a webhook.")
 
-        # install webhook
         hook_resp = await client.post(
             f"https://api.github.com/repos/{full_name}/hooks",
             headers=_gh_headers(gh_token),
@@ -121,14 +116,12 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
             },
         )
         if hook_resp.status_code == 422:
-            # webhook already exists — that's fine, just upsert the record
             webhook_id = None
         elif hook_resp.status_code == 201:
             webhook_id = hook_resp.json().get("id")
         else:
             raise HTTPException(status_code=502, detail=f"Failed to install webhook: {hook_resp.text}")
 
-    # upsert repo record
     db.table("repos").upsert({
         "owner_id": str(user.id),
         "full_name": full_name,
@@ -136,7 +129,6 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
         "webhook_secret": webhook_secret,
     }, on_conflict="owner_id,full_name").execute()
 
-    # add owner as a member too (for lookup convenience)
     repo_row = _row(db.table("repos").select("id").eq("owner_id", str(user.id)).eq("full_name", full_name).maybe_single().execute())
     if repo_row:
         db.table("repo_members").upsert({
@@ -155,25 +147,38 @@ async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(
 async def list_repos(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
 
-    # repos user owns
-    owned = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id")
+    owned = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
                   .eq("owner_id", str(user.id)).execute())
 
-    # repos user is a member of (but doesn't own)
     member_rows = _rows(db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute())
     member_ids = [r["repo_id"] for r in member_rows]
-    member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id")
+    member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id,active")
                          .in_("id", member_ids).execute()) if member_ids else []
 
-    # merge + deduplicate
     seen: set[str] = set()
     merged = []
     for repo in owned + member_repos:
         if repo["id"] not in seen:
             seen.add(repo["id"])
-            merged.append(repo)
+            merged.append({**repo, "is_owner": repo in owned})
 
     return sorted(merged, key=lambda r: r.get("connected_at", ""), reverse=True)
+
+
+# ── toggle repo active ────────────────────────────────────────────────────────
+
+class ToggleActiveRequest(BaseModel):
+    active: bool
+
+
+@router.patch("/repos/{repo_id}/active")
+async def toggle_repo_active(repo_id: str, body: ToggleActiveRequest, user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    row = _row(db.table("repos").select("id").eq("id", repo_id).eq("owner_id", str(user.id)).maybe_single().execute())
+    if not row:
+        raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
+    db.table("repos").update({"active": body.active}).eq("id", repo_id).execute()
+    return {"active": body.active}
 
 
 # ── disconnect repo ───────────────────────────────────────────────────────────
@@ -185,7 +190,6 @@ async def disconnect_repo(repo_id: str, user=Depends(get_current_user)) -> Any:
     if not row:
         raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
 
-    # remove webhook from GitHub
     if row.get("webhook_id"):
         async with httpx.AsyncClient() as client:
             await client.delete(
@@ -215,31 +219,28 @@ async def list_members(repo_id: str, user=Depends(get_current_user)) -> Any:
 async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
 
-    # only owner can invite
     owner = db.table("repos").select("id").eq("id", repo_id).eq("owner_id", str(user.id)).execute()
     if not owner.data:
         raise HTTPException(status_code=403, detail="Only the repo owner can invite members.")
 
-    # check member limit
-    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
+    prof_data = _row(db.table("profiles").select("plan,is_admin").eq("id", str(user.id)).maybe_single().execute()) or {}
     plan = str(prof_data.get("plan", "free"))
-    bypass = bool(prof_data.get("bypass_plan", False))
+    is_admin = bool(prof_data.get("is_admin", False))
     limit = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["members"]
-    if limit is not None and not bypass:
+    if limit is not None and not is_admin:
         current = _rows(db.table("repo_members").select("user_id").eq("repo_id", repo_id).execute())
-        if len(current) >= limit + 1:  # +1 for owner
+        if len(current) >= limit + 1:
             raise HTTPException(
                 status_code=403,
                 detail=f"Member limit reached for {plan} plan. Upgrade to add more.",
             )
 
-    # look up GitHub user to get their Supabase id (if they've signed in)
     invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).maybe_single().execute())
     invited_user_id = invited_user["id"] if invited_user else None
 
     db.table("repo_members").upsert({
         "repo_id": repo_id,
-        "user_id": invited_user_id or str(user.id),  # placeholder if not signed up yet
+        "user_id": invited_user_id or str(user.id),
         "github_login": body.github_login,
         "role": body.role,
         "invited_by": str(user.id),
@@ -270,8 +271,23 @@ async def get_me(user=Depends(get_current_user)) -> Any:
         "github_login": user.user_metadata.get("user_name"),
         "avatar_url": user.user_metadata.get("avatar_url"),
         "plan": prof_data.get("plan", "free"),
-        "bypass_plan": prof_data.get("bypass_plan", False),
+        "is_admin": prof_data.get("is_admin", False),
     }
+
+
+# ── me: update plan ───────────────────────────────────────────────────────────
+
+class UpdatePlanRequest(BaseModel):
+    plan: str
+
+
+@router.post("/me/plan")
+async def update_my_plan(body: UpdatePlanRequest, user=Depends(get_current_user)) -> Any:
+    if body.plan not in PLAN_LIMITS:
+        raise HTTPException(status_code=422, detail=f"Unknown plan: {body.plan}")
+    db = get_supabase_admin()
+    db.table("profiles").upsert({"id": str(user.id), "plan": body.plan}).execute()
+    return {"plan": body.plan}
 
 
 # ── admin: set plan ───────────────────────────────────────────────────────────
@@ -279,19 +295,84 @@ async def get_me(user=Depends(get_current_user)) -> Any:
 class SetPlanRequest(BaseModel):
     user_id: str
     plan: str
-    bypass_plan: bool = False
 
 
 @router.post("/admin/set-plan")
 async def admin_set_plan(body: SetPlanRequest, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    # only users with bypass_plan can call this
-    prof_data = _row(db.table("profiles").select("bypass_plan").eq("id", str(user.id)).maybe_single().execute()) or {}
-    if not prof_data.get("bypass_plan"):
-        raise HTTPException(status_code=403, detail="Admin only.")
-
+    _require_admin(user, db)
     if body.plan not in PLAN_LIMITS:
         raise HTTPException(status_code=422, detail=f"Unknown plan: {body.plan}")
-
-    db.table("profiles").update({"plan": body.plan, "bypass_plan": body.bypass_plan}).eq("id", body.user_id).execute()
+    db.table("profiles").update({"plan": body.plan}).eq("id", body.user_id).execute()
     return {"updated": True, "plan": body.plan}
+
+
+# ── admin: list users ─────────────────────────────────────────────────────────
+
+@router.get("/admin/users")
+async def admin_list_users(user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    _require_admin(user, db)
+
+    profiles = _rows(db.table("profiles").select("id,github_login,github_avatar_url,plan,is_admin,created_at").execute())
+    repos = _rows(db.table("repos").select("id,owner_id,full_name,active,connected_at").execute())
+    reviews = _rows(db.table("reviews").select("id,repo_full_name,created_at").execute())
+
+    repo_counts: dict[str, int] = {}
+    repo_by_owner: dict[str, list[dict[str, Any]]] = {}
+    for r in repos:
+        owner = r["owner_id"]
+        repo_counts[owner] = repo_counts.get(owner, 0) + 1
+        repo_by_owner.setdefault(owner, []).append(r)
+
+    review_counts: dict[str, int] = {}
+    for rv in reviews:
+        name = rv.get("repo_full_name", "")
+        review_counts[name] = review_counts.get(name, 0) + 1
+
+    result = []
+    for p in profiles:
+        uid = p["id"]
+        user_repos = repo_by_owner.get(uid, [])
+        result.append({
+            **p,
+            "repo_count": repo_counts.get(uid, 0),
+            "repos": [
+                {**rp, "review_count": review_counts.get(rp["full_name"], 0)}
+                for rp in user_repos
+            ],
+        })
+
+    return sorted(result, key=lambda u: u.get("created_at", ""), reverse=True)
+
+
+# ── admin: stats ──────────────────────────────────────────────────────────────
+
+@router.get("/admin/stats")
+async def admin_stats(user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    _require_admin(user, db)
+
+    profiles = _rows(db.table("profiles").select("plan").execute())
+    repos = _rows(db.table("repos").select("id,active").execute())
+    reviews = _rows(db.table("reviews").select("id,created_at").execute())
+
+    plan_counts: dict[str, int] = {"free": 0, "pro": 0, "team": 0}
+    for p in profiles:
+        plan = p.get("plan", "free")
+        plan_counts[plan] = plan_counts.get(plan, 0) + 1
+
+    return {
+        "users": {
+            "total": len(profiles),
+            "by_plan": plan_counts,
+        },
+        "repos": {
+            "total": len(repos),
+            "active": sum(1 for r in repos if r.get("active", True)),
+            "inactive": sum(1 for r in repos if not r.get("active", True)),
+        },
+        "reviews": {
+            "total": len(reviews),
+        },
+    }

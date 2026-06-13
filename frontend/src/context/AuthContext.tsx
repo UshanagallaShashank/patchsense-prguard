@@ -7,7 +7,7 @@ export interface Profile {
   github_login: string | null;
   github_avatar_url: string | null;
   plan: "free" | "pro" | "team";
-  bypass_plan: boolean;
+  is_admin: boolean;
 }
 
 interface AuthState {
