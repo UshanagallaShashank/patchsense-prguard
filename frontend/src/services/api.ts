@@ -46,9 +46,15 @@ export async function applyFix(
   findingId: string,
   mode: "commit" | "pr",
 ): Promise<{ mode: string; branch?: string; pr_url?: string; pr_number?: number }> {
+  const { data } = await supabase.auth.getSession();
+  const ghToken = data.session?.provider_token;
   const res = await fetch(`${BASE}/reviews/${reviewId}/apply-fix`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+      ...(ghToken ? { "X-GitHub-Token": ghToken } : {}),
+    },
     body: JSON.stringify({ finding_id: findingId, mode }),
   });
   if (!res.ok) throw new Error(await extractError(res));

@@ -6,68 +6,133 @@ import httpx
 from app.core.config import settings
 
 _API = "https://api.github.com"
+_BOT_NAME  = "PatchSense Bot"
+_BOT_EMAIL = "bot@patchsense.dev"
 
 
-def _headers() -> dict[str, str]:
+def _headers(token: str | None = None) -> dict[str, str]:
+    """Build GitHub API headers. Uses caller-supplied token first, then the
+    server-level PAT, so individual users' actions aren't attributed to the
+    PAT owner when a user token is available."""
+    tok = token or settings.github_pat
     h = {"Accept": "application/vnd.github.v3+json", "X-GitHub-Api-Version": "2022-11-28"}
-    if settings.github_pat:
-        h["Authorization"] = f"Bearer {settings.github_pat}"
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
     return h
 
 
-def get_file(repo: str, path: str, ref: str) -> tuple[str, str]:
+def get_file(repo: str, path: str, ref: str, token: str | None = None) -> tuple[str, str]:
     """Return (content, sha) for a file at the given ref."""
-    resp = httpx.get(f"{_API}/repos/{repo}/contents/{path}", params={"ref": ref}, headers=_headers(), timeout=20)
+    resp = httpx.get(
+        f"{_API}/repos/{repo}/contents/{path}",
+        params={"ref": ref},
+        headers=_headers(token),
+        timeout=20,
+    )
     resp.raise_for_status()
     data = resp.json()
     content = base64.b64decode(data["content"]).decode()
     return content, data["sha"]
 
 
-def commit_patch(repo: str, branch: str, path: str, new_content: str, sha: str, message: str) -> None:
-    """Update a file on an existing branch."""
-    payload = {
+def commit_patch(
+    repo: str,
+    branch: str,
+    path: str,
+    new_content: str,
+    sha: str,
+    message: str,
+    token: str | None = None,
+    triggered_by: str | None = None,
+) -> None:
+    """Update a file on an existing branch.
+
+    Commits are always attributed to the PatchSense Bot identity so they are
+    never falsely attributed to the PAT owner. The triggering user's login is
+    appended to the commit message when provided.
+    """
+    if triggered_by:
+        message = f"{message}\n\nCo-authored-by: {triggered_by} <{triggered_by}@users.noreply.github.com>"
+
+    payload: dict[str, Any] = {
         "message": message,
         "content": base64.b64encode(new_content.encode()).decode(),
         "sha": sha,
         "branch": branch,
+        "author":    {"name": _BOT_NAME, "email": _BOT_EMAIL},
+        "committer": {"name": _BOT_NAME, "email": _BOT_EMAIL},
     }
-    resp = httpx.put(f"{_API}/repos/{repo}/contents/{path}", json=payload, headers=_headers(), timeout=20)
+    resp = httpx.put(
+        f"{_API}/repos/{repo}/contents/{path}",
+        json=payload,
+        headers=_headers(token),
+        timeout=20,
+    )
     resp.raise_for_status()
 
 
-def create_fix_pr(repo: str, head_branch: str, base_branch: str, title: str, body: str) -> dict[str, Any]:
+def create_fix_pr(
+    repo: str,
+    head_branch: str,
+    base_branch: str,
+    title: str,
+    body: str,
+    token: str | None = None,
+    triggered_by: str | None = None,
+) -> dict[str, Any]:
     """Create a new PR from head_branch → base_branch."""
-    payload = {"title": title, "body": body, "head": head_branch, "base": base_branch}
-    resp = httpx.post(f"{_API}/repos/{repo}/pulls", json=payload, headers=_headers(), timeout=20)
+    attribution = (
+        f"\n\n---\n_Fix triggered by @{triggered_by} via PatchSense_"
+        if triggered_by
+        else "\n\n---\n_Auto-fix by PatchSense_"
+    )
+    payload = {
+        "title": title,
+        "body": body + attribution,
+        "head": head_branch,
+        "base": base_branch,
+    }
+    resp = httpx.post(
+        f"{_API}/repos/{repo}/pulls",
+        json=payload,
+        headers=_headers(token),
+        timeout=20,
+    )
     resp.raise_for_status()
     return resp.json()
 
 
-def create_branch(repo: str, new_branch: str, from_ref: str) -> None:
+def create_branch(repo: str, new_branch: str, from_ref: str, token: str | None = None) -> None:
     """Create a new branch from from_ref."""
-    resp = httpx.get(f"{_API}/repos/{repo}/git/ref/heads/{from_ref}", headers=_headers(), timeout=20)
+    resp = httpx.get(
+        f"{_API}/repos/{repo}/git/ref/heads/{from_ref}",
+        headers=_headers(token),
+        timeout=20,
+    )
     resp.raise_for_status()
     sha = resp.json()["object"]["sha"]
 
     resp = httpx.post(
         f"{_API}/repos/{repo}/git/refs",
         json={"ref": f"refs/heads/{new_branch}", "sha": sha},
-        headers=_headers(),
+        headers=_headers(token),
         timeout=20,
     )
     resp.raise_for_status()
 
 
-def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False) -> dict[str, Any]:
-    """Return PR details. With wait_for_mergeable=True, retries briefly while GitHub
-    computes the mergeable field asynchronously."""
+def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False, token: str | None = None) -> dict[str, Any]:
+    """Return PR details. Retries briefly while GitHub computes mergeable."""
     import time
 
     data: dict[str, Any] = {}
     attempts = 4 if wait_for_mergeable else 1
     for i in range(attempts):
-        resp = httpx.get(f"{_API}/repos/{repo}/pulls/{pr_number}", headers=_headers(), timeout=20)
+        resp = httpx.get(
+            f"{_API}/repos/{repo}/pulls/{pr_number}",
+            headers=_headers(token),
+            timeout=20,
+        )
         resp.raise_for_status()
         data = resp.json()
         if not wait_for_mergeable or data.get("mergeable") is not None:
@@ -77,11 +142,11 @@ def get_pr(repo: str, pr_number: int, wait_for_mergeable: bool = False) -> dict[
     return data
 
 
-def get_pr_files(repo: str, pr_number: int) -> list[str]:
+def get_pr_files(repo: str, pr_number: int, token: str | None = None) -> list[str]:
     """Return list of file paths changed in a PR."""
     resp = httpx.get(
         f"{_API}/repos/{repo}/pulls/{pr_number}/files",
-        headers=_headers(),
+        headers=_headers(token),
         params={"per_page": "100"},
         timeout=20,
     )
@@ -89,12 +154,12 @@ def get_pr_files(repo: str, pr_number: int) -> list[str]:
     return [f["filename"] for f in resp.json()]
 
 
-def merge_pr(repo: str, pr_number: int) -> dict[str, Any]:
+def merge_pr(repo: str, pr_number: int, token: str | None = None) -> dict[str, Any]:
     """Merge a PR via squash merge."""
     resp = httpx.put(
         f"{_API}/repos/{repo}/pulls/{pr_number}/merge",
         json={"merge_method": "squash"},
-        headers=_headers(),
+        headers=_headers(token),
         timeout=20,
     )
     resp.raise_for_status()
