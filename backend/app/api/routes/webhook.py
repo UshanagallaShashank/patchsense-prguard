@@ -1,3 +1,4 @@
+import json
 from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response, HTTPException
@@ -18,7 +19,23 @@ _METADATA_ACTIONS = {"edited"}
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
     body = await request.body()
     sig = request.headers.get("X-Hub-Signature-256", "")
-    if not verify_webhook_signature(body, sig):
+
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # Look up the per-repo webhook secret so each repo can have its own.
+    # Falls back to the global GITHUB_WEBHOOK_SECRET if none found.
+    client = get_supabase_admin()
+    repo_full_name: str = payload.get("repository", {}).get("full_name") or ""
+    repo_secret: str | None = None
+    if repo_full_name:
+        row = client.table("repos").select("webhook_secret").eq("full_name", repo_full_name).maybe_single().execute()
+        if row.data and isinstance(row.data, dict):
+            repo_secret = row.data.get("webhook_secret")
+
+    if not verify_webhook_signature(body, sig, secret=repo_secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     event_type = request.headers.get("X-GitHub-Event", "")
@@ -26,8 +43,6 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
         return Response(status_code=200)
     if event_type and event_type != "pull_request":
         return Response(status_code=200)
-
-    payload = await request.json()
     event = parse_pr_event(payload)
     if not event:
         return Response(status_code=200)
@@ -35,8 +50,6 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
     # Ignore draft PRs unless they are being promoted to ready
     if event.is_draft and event.action != "ready_for_review":
         return Response(status_code=200)
-
-    client = get_supabase_admin()
 
     if event.action == "closed":
         _update_latest_review(client, event.repo_full_name, event.pr_number, {"pr_state": event.pr_state})
