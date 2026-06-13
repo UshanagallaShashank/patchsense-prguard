@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import json
 import uuid
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -48,7 +48,7 @@ def _require_repo_active(repo_full_name: str) -> None:
     """Raise 403 if the repo is paused (active=False)."""
     admin = get_supabase_admin()
     row = admin.table("repos").select("active").eq("full_name", repo_full_name).maybe_single().execute()
-    if row and row.data and row.data.get("active") is False:
+    if row and row.data and cast(dict[str, Any], row.data).get("active") is False:
         raise HTTPException(status_code=403, detail="This repo is paused. Resume it in Settings → Repos to use this feature.")
 
 
