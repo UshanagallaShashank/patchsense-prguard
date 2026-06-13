@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import Client
 
-from app.core.supabase_client import get_supabase
+from app.core.supabase_client import get_supabase, get_supabase_admin
 from app.schemas.review_schema import ReviewOut
 from app.services.review_service import get_review, list_reviews
 
@@ -95,8 +95,8 @@ async def generate_fix(
     if not patch:
         raise HTTPException(status_code=422, detail="AI could not generate a valid patch")
 
-    # Persist patch on the finding
-    client.table("findings").update({"patch": patch}).eq("id", str(finding_id)).execute()
+    # Persist patch — use admin client so RLS doesn't silently block the write
+    get_supabase_admin().table("findings").update({"patch": patch}).eq("id", str(finding_id)).execute()
 
     return {"patch": patch, "file_path": file_path}
 
@@ -118,7 +118,8 @@ def apply_fix(
         get_file, commit_patch, create_branch, create_fix_pr, apply_patch_to_content
     )
 
-    review = get_review(client, review_id)
+    # admin client so RLS doesn't hide the persisted patch field
+    review = get_review(get_supabase_admin(), review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
@@ -178,8 +179,8 @@ def merge_review_pr(
     # Live conflict check: never attempt a merge GitHub will reject
     try:
         pr = get_pr(review["repo_full_name"], review["pr_number"], wait_for_mergeable=True)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not check PR mergeability: {e}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not check PR mergeability with GitHub")
 
     mergeable_state = pr.get("mergeable_state") or "unknown"
     client.table("reviews").update({"mergeable_state": mergeable_state}).eq("id", str(review_id)).execute()

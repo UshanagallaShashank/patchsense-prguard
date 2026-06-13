@@ -1,3 +1,5 @@
+import asyncio
+
 import structlog
 
 log = structlog.get_logger()
@@ -26,7 +28,8 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
 
         mergeable_state = "unknown"
         try:
-            pr = get_pr(repo, pr_number, wait_for_mergeable=True)
+            # get_pr is blocking (sync httpx + retry sleep) — keep it off the event loop
+            pr = await asyncio.to_thread(get_pr, repo, pr_number, True)
             mergeable_state = pr.get("mergeable_state") or "unknown"
         except Exception as exc:
             log.warning("mergeable_check_failed", repo=repo, pr=pr_number, error=str(exc))
