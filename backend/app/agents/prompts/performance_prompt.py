@@ -24,7 +24,7 @@ Return ONLY a valid JSON array. No markdown fences, no explanation text.
 
 [{"file_path": "path/to/file.py", "line_number": 42, "severity": "high|medium|info", "message": "...", "suggestion": "...", "confidence": 0.0}]
 
-- confidence: float 0.0–1.0 (1.0 = certain, 0.5 = possible, <0.5 = uncertain). Only report findings where the performance impact is real and measurable.
+- confidence: float 0.0-1.0 (1.0 = certain, 0.5 = possible, <0.5 = uncertain). Only report findings where the performance impact is real and measurable.
 
 ## Example
 Input diff:
