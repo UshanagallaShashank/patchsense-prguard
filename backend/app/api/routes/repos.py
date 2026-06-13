@@ -153,11 +153,26 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
 @router.get("/repos")
 async def list_repos(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    rows = db.table("repos").select("id,full_name,connected_at,webhook_id").or_(
-        f"owner_id.eq.{user.id},"
-        f"id.in.(select repo_id from repo_members where user_id = '{user.id}')"
-    ).order("connected_at", desc=True).execute()
-    return rows.data or []
+
+    # repos user owns
+    owned = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id")
+                  .eq("owner_id", str(user.id)).execute())
+
+    # repos user is a member of (but doesn't own)
+    member_rows = _rows(db.table("repo_members").select("repo_id").eq("user_id", str(user.id)).execute())
+    member_ids = [r["repo_id"] for r in member_rows]
+    member_repos = _rows(db.table("repos").select("id,full_name,connected_at,webhook_id")
+                         .in_("id", member_ids).execute()) if member_ids else []
+
+    # merge + deduplicate
+    seen: set[str] = set()
+    merged = []
+    for repo in owned + member_repos:
+        if repo["id"] not in seen:
+            seen.add(repo["id"])
+            merged.append(repo)
+
+    return sorted(merged, key=lambda r: r.get("connected_at", ""), reverse=True)
 
 
 # ── disconnect repo ───────────────────────────────────────────────────────────
