@@ -4,5 +4,5 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT 
 ALTER TABLE repos    ADD COLUMN IF NOT EXISTS active   boolean NOT NULL DEFAULT true;
 ALTER TABLE profiles DROP COLUMN IF EXISTS bypass_plan;
 
--- Set your account as admin
-UPDATE profiles SET is_admin = true WHERE id = 'df7422ca-d621-4c30-92a2-5f0c68f51b77';
+-- Set yourself as admin: replace <your-user-id> with your id from auth.users
+-- UPDATE profiles SET is_admin = true WHERE id = '<your-user-id>';
