@@ -77,7 +77,7 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
 
     # install webhook on GitHub
     webhook_secret = secrets.token_hex(32)
-    webhook_url = f"{settings.render_url}/webhook"
+    webhook_url = f"{settings.render_external_url}/webhook"
 
     async with httpx.AsyncClient() as client:
         # verify repo exists and user has admin access
