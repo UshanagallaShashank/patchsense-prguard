@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+
 import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
@@ -7,16 +7,17 @@ import { useAuth } from "../context/AuthContext"
 import { SeverityBadge } from "../components/severity-badge"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { generateFix, applyFix, mergePr, fetchConflictDetails } from "../services/api"
+import { generateFix, applyFix, mergePr, fetchConflictDetails, fetchRepos } from "../services/api"
 import type { ConflictFile } from "../services/api"
 import type { Finding, Review, ReviewStatus } from "../types/review"
+import { ConnectRepoModal } from "../components/ConnectRepoModal"
 
 const PLAN_COLOR: Record<string, string> = {
   free: "bg-zinc-800 text-zinc-400",
@@ -57,81 +58,107 @@ function timeAgo(iso: string) {
 
 /* ── SettingsDrawer ──────────────────────────────────────────── */
 
-function CopyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="mb-5">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{label}</p>
-      <div className="flex gap-2">
-        <code className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs text-primary font-mono break-all leading-relaxed">
-          {value}
-        </code>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-          className={cn("shrink-0", copied && "border-green-700 text-green-400")}
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </Button>
-      </div>
-      {hint && <p className="text-xs text-muted-foreground/60 mt-1.5">{hint}</p>}
-    </div>
-  )
-}
+function SettingsDrawer({
+  open, onClose, repos, onConnectRepo, onRepoDisconnected,
+}: {
+  open: boolean
+  onClose: () => void
+  repos: { id: string; full_name: string }[]
+  onConnectRepo: () => void
+  onRepoDisconnected: () => void
+}) {
+  const { profile, user } = useAuth()
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
 
-function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const steps = [
-    "Go to GitHub repo → Settings → Webhooks → Add webhook",
-    "Set Payload URL to the deployed webhook URL below",
-    "Set Content type to application/json",
-    "Set Secret to: patchsense123",
-    'Under events → "Let me select individual events" → tick Pull requests only',
-    "Click Add webhook — every new PR auto-triggers a review",
-  ]
+  async function handleDisconnect(repoId: string) {
+    setDisconnecting(repoId)
+    try {
+      const { disconnectRepo } = await import("../services/api")
+      await disconnectRepo(repoId)
+      onRepoDisconnected()
+      toast.success("Repo disconnected")
+    } catch {
+      toast.error("Could not disconnect repo")
+    } finally {
+      setDisconnecting(null)
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>⚙️ Connect a Repo</SheetTitle>
-          <SheetDescription>
-            Add the webhook to any repo — PatchSense reviews every PR automatically.
-          </SheetDescription>
+      <SheetContent className="flex flex-col gap-0 overflow-y-auto">
+        <SheetHeader className="pb-4 border-b border-border">
+          <SheetTitle className="flex items-center gap-2">
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            Settings
+          </SheetTitle>
+          <SheetDescription>Manage your connected repos and account.</SheetDescription>
         </SheetHeader>
 
-        <Card className="mb-6">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Setup steps</p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <ol className="space-y-3">
-              {steps.map((s, i) => (
-                <li key={i} className="flex gap-3 items-start">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 border border-primary/30 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
-                  <span className="text-sm text-foreground/80 leading-relaxed">{s}</span>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-
-        <CopyField
-          label="Webhook URL"
-          value={`${import.meta.env.VITE_WEBHOOK_URL ?? "http://localhost:8000"}/webhook`}
-          hint="Paste into GitHub → repo Settings → Webhooks"
-        />
-        <div className="rounded-xl border border-amber-900/30 bg-amber-950/15 px-4 py-3 text-xs text-amber-400/80 leading-relaxed">
-          <strong>Webhook Secret:</strong> use the value of <code className="bg-black/30 px-1 rounded">GITHUB_WEBHOOK_SECRET</code> from your environment — never put secrets in source code.
+        {/* Account */}
+        <div className="py-5 border-b border-border">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Account</p>
+          <div className="flex items-center gap-3">
+            {user?.user_metadata?.avatar_url && (
+              <img src={user.user_metadata.avatar_url} alt="" className="h-9 w-9 rounded-full border border-border" />
+            )}
+            <div>
+              <p className="text-sm font-medium text-foreground">@{user?.user_metadata?.user_name}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+            {profile && (
+              <span className={`ml-auto text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${PLAN_COLOR[profile.plan]}`}>
+                {profile.plan}
+              </span>
+            )}
+          </div>
         </div>
 
-        <Card className="border-primary/20 bg-primary/5 mt-2">
-          <CardContent className="px-4 py-4">
-            <p className="text-xs text-primary/80 leading-relaxed">
-              💡 <strong>Multi-repo:</strong> add the same webhook to as many repos as you want. Each review is tagged by{" "}
-              <code className="bg-background px-1 rounded text-primary">repo_full_name</code> and shows up here.
-            </p>
-          </CardContent>
-        </Card>
+        {/* Connected repos */}
+        <div className="py-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Connected repos</p>
+            <Button size="sm" variant="outline" onClick={onConnectRepo} className="h-7 text-xs gap-1.5">
+              <PlusCircle className="h-3 w-3" />
+              Add repo
+            </Button>
+          </div>
+
+          {repos.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border py-8 flex flex-col items-center gap-2 text-center">
+              <GitBranch className="h-6 w-6 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">No repos connected yet</p>
+              <Button size="sm" variant="ghost" onClick={onConnectRepo} className="text-xs text-primary mt-1">
+                Connect your first repo →
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {repos.map(r => (
+                <div key={r.id} className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <a
+                    href={`https://github.com/${r.full_name}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 text-sm text-foreground hover:text-primary transition-colors truncate font-mono"
+                  >
+                    {r.full_name}
+                  </a>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDisconnect(r.id)}
+                    disabled={disconnecting === r.id}
+                    className="h-6 text-[11px] px-2 text-red-500/70 hover:text-red-400 hover:bg-red-950/30 shrink-0"
+                  >
+                    {disconnecting === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disconnect"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   )
@@ -710,21 +737,22 @@ export function ReviewsPage() {
   const [prStateFilter, setPrStateFilter] = useState<"open" | "merged" | "all">("open")
   const [showSettings, setShowSettings]   = useState(false)
   const [showUserMenu, setShowUserMenu]   = useState(false)
+  const [showConnect, setShowConnect]     = useState(false)
   const [repos, setRepos]                 = useState<{id:string;full_name:string}[]>([])
   const [reposLoaded, setReposLoaded]     = useState(false)
   const [timedOut, setTimedOut]           = useState(false)
   const { reviews, loading, error, refresh } = useReviews(page)
   const { profile, user, signOut } = useAuth()
-  const navigate = useNavigate()
+
 
   const avatarUrl   = user?.user_metadata?.avatar_url as string | undefined
   const githubLogin = user?.user_metadata?.user_name as string | undefined
 
-  useEffect(() => {
-    import("../services/api").then(({ fetchRepos }) =>
-      fetchRepos().then(r => { setRepos(r); setReposLoaded(true) }).catch(() => setReposLoaded(true))
-    )
-  }, [])
+  function loadRepos() {
+    fetchRepos().then(r => { setRepos(r); setReposLoaded(true) }).catch(() => setReposLoaded(true))
+  }
+
+  useEffect(() => { loadRepos() }, [])
 
   // Give SSE 8s to deliver data before showing empty state
   useEffect(() => {
@@ -799,7 +827,7 @@ export function ReviewsPage() {
                       <p className="text-[11px] text-zinc-500">{user?.email}</p>
                     </div>
                     <button
-                      onClick={() => { setShowUserMenu(false); navigate("/onboarding") }}
+                      onClick={() => { setShowUserMenu(false); setShowConnect(true) }}
                       className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 transition-colors"
                     >
                       <PlusCircle className="h-3.5 w-3.5" /> Connect repo
@@ -965,7 +993,7 @@ export function ReviewsPage() {
               PatchSense will auto-install a webhook and start reviewing every PR automatically — no CI config needed.
             </p>
             <Button
-              onClick={() => navigate("/onboarding")}
+              onClick={() => setShowConnect(true)}
               className="gap-2 bg-violet-600 hover:bg-violet-500 text-white px-6"
             >
               <PlusCircle className="h-4 w-4" />
@@ -998,7 +1026,7 @@ export function ReviewsPage() {
                 </a>
               ))}
             </div>
-            <Button variant="outline" size="sm" onClick={() => navigate("/onboarding")} className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowConnect(true)} className="gap-2">
               <PlusCircle className="h-3.5 w-3.5" /> Connect another repo
             </Button>
           </div>
@@ -1033,7 +1061,19 @@ export function ReviewsPage() {
         )}
       </main>
 
-      <SettingsDrawer open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsDrawer
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        repos={repos}
+        onConnectRepo={() => { setShowSettings(false); setShowConnect(true) }}
+        onRepoDisconnected={loadRepos}
+      />
+
+      <ConnectRepoModal
+        open={showConnect}
+        onClose={() => setShowConnect(false)}
+        onConnected={() => { loadRepos(); refresh() }}
+      />
     </div>
   )
 }
