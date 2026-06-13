@@ -31,6 +31,9 @@ Thumbs.db
 node_modules/
 dist/
 .cache/
+# Root-level package-lock.json is stray (the real one lives in frontend/)
+/package-lock.json
+/package.json
 
 # Alembic
 alembic/versions/*.pyc
@@ -41,3 +44,8 @@ alembic/versions/*.pyc
 # Keys
 *.pem
 private-key*
+
+# iCloud / macOS auto-created duplicates (e.g. "supabase_client 2.py")
+* 2.py
+* 2.ts
+* 2.tsx
