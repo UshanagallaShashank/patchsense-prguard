@@ -30,12 +30,13 @@ jobs:
         run: |
           OVER_LIMIT=0
           while IFS= read -r file; do
+            [ -f "$file" ] || continue
             lines=$(wc -l < "$file")
-            if [ "$lines" -gt 30 ]; then
-              echo "WARN: $file has $lines lines (limit: 30)"
+            if [ "$lines" -gt 300 ]; then
+              echo "WARN: $file has $lines lines (limit: 300)"
               OVER_LIMIT=1
             fi
-          done < <(git diff --name-only origin/main...HEAD | grep '\.py$')
+          done < <(git diff --name-only --diff-filter=ACM origin/main...HEAD | grep '\.py$')
           if [ "$OVER_LIMIT" -eq 1 ]; then
-            echo "Some Python files exceed the 30-line limit. Please split them."
+            echo "Some Python files exceed the 300-line limit. Please split them."
           fi
