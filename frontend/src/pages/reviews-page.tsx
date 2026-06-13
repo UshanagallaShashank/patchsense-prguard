@@ -12,7 +12,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { generateFix, applyFix, mergePr } from "../services/api"
+import { generateFix, applyFix, mergePr, fetchConflictDetails } from "../services/api"
+import type { ConflictFile } from "../services/api"
 import type { Finding, Review, ReviewStatus } from "../types/review"
 
 /* ── config ──────────────────────────────────────────────────── */
@@ -136,58 +137,147 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function ConflictDetail({ headBranch, baseBranch, conflictFiles, repo, prNumber }: {
-  headBranch: string; baseBranch: string; conflictFiles: string[]; repo: string; prNumber: number
+function FileDiffPanel({ file, headBranch, baseBranch }: { file: ConflictFile; headBranch: string; baseBranch: string }) {
+  const [tab, setTab] = useState<"yours" | "main">("yours")
+  const content = tab === "yours" ? file.head_content : file.base_content
+  const lines = content?.split("\n") ?? []
+
+  return (
+    <div className="mt-2 rounded-lg border border-amber-900/30 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-amber-950/30 border-b border-amber-900/30">
+        <span className="text-[10px] font-mono text-amber-300/70 truncate max-w-[60%]">{file.filename}</span>
+        <div className="flex rounded overflow-hidden border border-amber-900/40 shrink-0">
+          {(["yours", "main"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={cn(
+                "text-[10px] px-2 py-0.5 transition-colors",
+                tab === t ? "bg-amber-900/60 text-amber-300" : "text-muted-foreground hover:text-amber-400"
+              )}
+            >
+              {t === "yours" ? `Your branch (${headBranch})` : `main (${baseBranch})`}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="max-h-48 overflow-y-auto bg-black/30 font-mono text-[11px]">
+        {lines.map((line, i) => (
+          <div key={i} className="flex gap-2 px-3 py-[1px] hover:bg-white/5">
+            <span className="text-muted-foreground/30 select-none w-7 text-right shrink-0">{i + 1}</span>
+            <span className="text-muted-foreground/80 whitespace-pre-wrap break-all">{line}</span>
+          </div>
+        ))}
+        {!content && <p className="px-3 py-3 text-muted-foreground/50 text-[11px]">Could not fetch file content.</p>}
+      </div>
+      {file.head_content && file.base_content && (
+        <div className="px-3 py-2 border-t border-amber-900/20 bg-amber-950/10">
+          <p className="text-[10px] text-amber-400/70">
+            ↑ Compare the two tabs — keep the lines you want, remove the rest, then save and commit.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ConflictDetail({ reviewId, headBranch, baseBranch, conflictFiles, repo, prNumber }: {
+  reviewId: string; headBranch: string; baseBranch: string; conflictFiles: string[]; repo: string; prNumber: number
 }) {
+  const [details, setDetails] = useState<ConflictFile[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const loadDetails = () => {
+    if (details !== null || loading) return
+    setLoading(true)
+    fetchConflictDetails(reviewId)
+      .then(d => setDetails(d.files))
+      .catch(() => setDetails([]))
+      .finally(() => setLoading(false))
+  }
+
   const steps = [
-    { cmd: `git fetch origin`, label: "1. Fetch latest" },
-    { cmd: `git checkout ${headBranch}`, label: "2. Switch to your branch" },
-    { cmd: `git merge origin/${baseBranch}`, label: "3. Merge base into your branch" },
-    { cmd: `# Resolve conflicts in the files listed below, then:`, label: "" },
-    { cmd: `git add .`, label: "4. Stage resolved files" },
-    { cmd: `git commit`, label: "5. Commit the merge" },
-    { cmd: `git push`, label: "6. Push to GitHub" },
+    { cmd: `git fetch origin`,               label: "1. Fetch latest" },
+    { cmd: `git checkout ${headBranch}`,      label: "2. Your branch" },
+    { cmd: `git merge origin/${baseBranch}`,  label: "3. Merge base" },
+    { cmd: `# Open each file below, resolve the conflict markers, then:`, label: "" },
+    { cmd: `git add .`,                       label: "4. Stage" },
+    { cmd: `git commit`,                      label: "5. Commit" },
+    { cmd: `git push`,                        label: "6. Push" },
   ]
 
   return (
     <div className="my-3 rounded-xl border border-amber-900/40 bg-amber-950/20 overflow-hidden">
+      {/* header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-900/30">
         <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-        <span className="text-xs font-semibold text-amber-400">
-          Merge conflict — this branch cannot be merged until resolved
-        </span>
+        <span className="text-xs font-semibold text-amber-400">Merge conflict — cannot be merged until resolved</span>
         <a
           href={`https://github.com/${repo}/pull/${prNumber}`}
-          target="_blank"
-          rel="noopener noreferrer"
+          target="_blank" rel="noopener noreferrer"
           className="ml-auto text-[11px] text-amber-400/70 hover:text-amber-400 underline underline-offset-2 shrink-0"
         >
           Resolve on GitHub ↗
         </a>
       </div>
 
-      <div className="px-4 pt-3 pb-1">
-        <p className="text-[11px] text-muted-foreground mb-2 font-medium uppercase tracking-wider">
-          {conflictFiles.length > 0 ? "Files to resolve" : "Affected files not yet loaded — re-trigger a review to fetch them"}
-        </p>
+      {/* conflicting files + "what to fix" */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">
+            {conflictFiles.length > 0 ? "What to fix — conflicting files" : "Re-trigger a review to detect conflict files"}
+          </p>
+          {conflictFiles.length > 0 && details === null && (
+            <button
+              onClick={loadDetails}
+              disabled={loading}
+              className="text-[10px] text-amber-400/70 hover:text-amber-400 underline underline-offset-2"
+            >
+              {loading ? "Loading…" : "Show file contents ↓"}
+            </button>
+          )}
+        </div>
+
         {conflictFiles.length > 0 && (
-          <div className="flex flex-col gap-1 mb-3">
+          <div className="flex flex-col gap-1">
             {conflictFiles.map(f => (
-              <div key={f} className="flex items-center gap-2 text-[11px] font-mono text-amber-300/80 bg-amber-950/30 rounded px-2 py-1">
-                <span className="text-amber-500/60 shrink-0">⚠</span>
-                {f}
+              <div key={f} className="text-[11px] font-mono text-amber-300/80 bg-amber-950/30 rounded px-2 py-1 flex items-center gap-2">
+                <span className="text-amber-500/60 shrink-0">⚠</span>{f}
               </div>
             ))}
           </div>
         )}
+
+        {/* per-file diff viewer */}
+        {details && details.map(file => (
+          <FileDiffPanel key={file.filename} file={file} headBranch={headBranch} baseBranch={baseBranch} />
+        ))}
+
+        {/* what Git conflict markers look like */}
+        {details && details.length > 0 && (
+          <div className="mt-3 rounded-lg border border-border bg-black/20 p-3">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5">What the conflict looks like in your editor</p>
+            <div className="font-mono text-[11px] space-y-0.5">
+              <div className="text-blue-400">{"<<<<<<< HEAD  (your branch)"}</div>
+              <div className="text-green-400 ml-2">{"your changes go here"}</div>
+              <div className="text-muted-foreground/60">{"======="}</div>
+              <div className="text-amber-400 ml-2">{"main's changes go here"}</div>
+              <div className="text-red-400">{`>>>>>>> origin/${baseBranch}`}</div>
+            </div>
+            <p className="text-[10px] text-muted-foreground/60 mt-2">
+              Delete the markers and keep whichever lines (or both) make sense for your intent.
+            </p>
+          </div>
+        )}
       </div>
 
-      <div className="px-4 pb-3">
-        <p className="text-[11px] text-muted-foreground mb-2 font-medium uppercase tracking-wider">How to resolve locally</p>
+      {/* how to resolve */}
+      <div className="px-4 pb-3 border-t border-amber-900/20 pt-3">
+        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2">How to resolve locally</p>
         <div className="flex flex-col gap-1">
           {steps.map((s, i) => (
             <div key={i} className="flex items-center gap-2 text-[11px] font-mono bg-black/30 rounded px-2 py-1">
-              <span className="text-muted-foreground/40 min-w-[7ch]">{s.label}</span>
+              <span className="text-muted-foreground/40 w-20 shrink-0">{s.label}</span>
               <span className={cn("flex-1", s.cmd.startsWith("#") ? "text-muted-foreground/50 italic" : "text-green-400/90")}>
                 {s.cmd}
               </span>
@@ -485,6 +575,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
           <div className="px-5 pb-3">
             {hasConflicts && (!r.pr_state || r.pr_state === "open") && (
               <ConflictDetail
+                reviewId={r.id}
                 headBranch={r.head_branch ?? ""}
                 baseBranch={r.base_branch ?? "main"}
                 conflictFiles={r.conflict_files ?? []}

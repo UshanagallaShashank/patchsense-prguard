@@ -48,6 +48,24 @@ export async function applyFix(
   return res.json();
 }
 
+export interface ConflictFile {
+  filename: string;
+  head_content: string | null;
+  base_content: string | null;
+}
+
+export interface ConflictDetails {
+  head_branch: string;
+  base_branch: string;
+  files: ConflictFile[];
+}
+
+export async function fetchConflictDetails(reviewId: string): Promise<ConflictDetails> {
+  const res = await fetch(`${BASE}/reviews/${reviewId}/conflict-details`);
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
 // Merge the PR associated with a review
 export async function mergePr(reviewId: string): Promise<{ merged: boolean }> {
   const res = await fetch(`${BASE}/reviews/${reviewId}/merge`, { method: "POST" });

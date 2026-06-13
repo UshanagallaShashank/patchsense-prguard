@@ -161,6 +161,47 @@ def apply_fix(
 
 # ── merge PR ─────────────────────────────────────────────────────────────────
 
+# ── conflict details ─────────────────────────────────────────────────────────
+
+@router.get("/reviews/{review_id}/conflict-details")
+def get_conflict_details(
+    review_id: uuid.UUID,
+    client: Client = Depends(get_supabase),
+) -> Any:
+    """For each conflicting file, return both the PR branch content and the base
+    branch content so the UI can show exactly what needs to be merged."""
+    from app.services.github_service import get_file
+
+    review = get_review(client, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    conflict_files: list[str] = review.get("conflict_files") or []
+    head_branch: str = review.get("head_branch") or ""
+    base_branch: str = review.get("base_branch") or "main"
+    repo: str = review["repo_full_name"]
+
+    if not conflict_files or not head_branch:
+        return {"files": []}
+
+    files = []
+    for path in conflict_files:
+        entry: dict[str, Any] = {"filename": path, "head_content": None, "base_content": None}
+        try:
+            entry["head_content"], _ = get_file(repo, path, head_branch)
+        except Exception:
+            pass
+        try:
+            entry["base_content"], _ = get_file(repo, path, base_branch)
+        except Exception:
+            pass
+        files.append(entry)
+
+    return {"head_branch": head_branch, "base_branch": base_branch, "files": files}
+
+
+# ── merge PR ─────────────────────────────────────────────────────────────────
+
 @router.post("/reviews/{review_id}/merge")
 def merge_review_pr(
     review_id: uuid.UUID,
