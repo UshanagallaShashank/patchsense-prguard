@@ -3,7 +3,7 @@ import secrets
 from typing import Any, cast
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.auth import get_current_user
@@ -57,7 +57,7 @@ class ConnectRepoRequest(BaseModel):
 
 
 @router.post("/repos/connect")
-async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user)) -> Any:
+async def connect_repo(body: ConnectRepoRequest, request: Request, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
 
     # resolve plan + bypass
@@ -80,9 +80,10 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # get GitHub token from Supabase session
-    # provider token not available via admin API — use PAT for webhook install
-    gh_token = settings.github_pat
+    # Prefer the user's own GitHub OAuth token (forwarded from the frontend session).
+    # This ensures the webhook is installed using their credentials and scopes.
+    # Falls back to the server PAT if the token wasn't forwarded.
+    gh_token = request.headers.get("X-GitHub-Token") or settings.github_pat
 
     # install webhook on GitHub
     webhook_secret = secrets.token_hex(32)

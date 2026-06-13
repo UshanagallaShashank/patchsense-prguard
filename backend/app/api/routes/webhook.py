@@ -32,7 +32,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
     repo_secret: str | None = None
     if repo_full_name:
         row = client.table("repos").select("webhook_secret").eq("full_name", repo_full_name).maybe_single().execute()
-        if row.data and isinstance(row.data, dict):
+        if row is not None and row.data and isinstance(row.data, dict):
             repo_secret = row.data.get("webhook_secret")
 
     if not verify_webhook_signature(body, sig, secret=repo_secret):
