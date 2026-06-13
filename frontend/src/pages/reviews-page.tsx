@@ -107,8 +107,14 @@ function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void 
           </CardContent>
         </Card>
 
-        <CopyField label="Webhook URL (deployed)" value="https://patchsense-prguard-t9ze.onrender.com/webhook" hint="Use for production" />
-        <CopyField label="Webhook Secret" value="patchsense123" hint="Paste into the GitHub webhook secret field" />
+        <CopyField
+          label="Webhook URL"
+          value={`${import.meta.env.VITE_WEBHOOK_URL ?? "http://localhost:8000"}/webhook`}
+          hint="Paste into GitHub → repo Settings → Webhooks"
+        />
+        <div className="rounded-xl border border-amber-900/30 bg-amber-950/15 px-4 py-3 text-xs text-amber-400/80 leading-relaxed">
+          <strong>Webhook Secret:</strong> use the value of <code className="bg-black/30 px-1 rounded">GITHUB_WEBHOOK_SECRET</code> from your environment — never put secrets in source code.
+        </div>
 
         <Card className="border-primary/20 bg-primary/5 mt-2">
           <CardContent className="px-4 py-4">
