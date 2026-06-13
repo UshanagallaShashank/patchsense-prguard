@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle, LayoutDashboard } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
 import { useAuth } from "../context/AuthContext"
@@ -831,7 +832,7 @@ export function ReviewsPage() {
   const [timedOut, setTimedOut]           = useState(false)
   const { reviews, loading, error, refresh } = useReviews(page)
   const { profile, user, signOut } = useAuth()
-
+  const navigate = useNavigate()
 
   const avatarUrl   = user?.user_metadata?.avatar_url as string | undefined
   const githubLogin = user?.user_metadata?.user_name as string | undefined
@@ -915,6 +916,12 @@ export function ReviewsPage() {
                       <p className="text-[11px] text-zinc-500">{user?.email}</p>
                     </div>
                     <button
+                      onClick={() => { setShowUserMenu(false); navigate("/repos") }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 transition-colors"
+                    >
+                      <GitBranch className="h-3.5 w-3.5" /> My Repos
+                    </button>
+                    <button
                       onClick={() => { setShowUserMenu(false); setShowConnect(true) }}
                       className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 transition-colors"
                     >
@@ -926,6 +933,14 @@ export function ReviewsPage() {
                     >
                       <Settings className="h-3.5 w-3.5" /> Settings
                     </button>
+                    {profile?.is_admin && (
+                      <button
+                        onClick={() => { setShowUserMenu(false); navigate("/admin") }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-amber-300 hover:bg-zinc-900 transition-colors"
+                      >
+                        <LayoutDashboard className="h-3.5 w-3.5" /> Admin
+                      </button>
+                    )}
                     <div className="border-t border-border mt-1 pt-1">
                       <button
                         onClick={() => signOut()}
