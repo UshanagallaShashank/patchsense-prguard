@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Review } from "../types/review";
 import { fetchReviews, BASE } from "../services/api";
+import { supabase } from "../lib/supabase";
 
 const FALLBACK_POLL_MS = 5000;
 
@@ -13,7 +14,6 @@ export function useReviews(page: number) {
   const esRef                   = useRef<EventSource | null>(null);
   const fallbackTimerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Keep callbacks in refs so the effect never needs them as deps
   const applyReviewsRef = useRef<(data: Review[]) => void>(null!);
   applyReviewsRef.current = (data: Review[]) => {
     data.forEach(r => {
@@ -43,14 +43,24 @@ export function useReviews(page: number) {
 
   useEffect(() => {
     setLoading(true);
+    let cancelled = false;
 
-    const cleanup = () => {
+    const closeEs = () => {
       esRef.current?.close();
       esRef.current = null;
+    };
+
+    const stopPoll = () => {
       if (fallbackTimerRef.current) {
         clearInterval(fallbackTimerRef.current);
         fallbackTimerRef.current = null;
       }
+    };
+
+    const cleanup = () => {
+      cancelled = true;
+      closeEs();
+      stopPoll();
     };
 
     const startFallbackPoll = (p: number) => {
@@ -64,20 +74,31 @@ export function useReviews(page: number) {
       }, FALLBACK_POLL_MS);
     };
 
-    // SSE on page 1 for real-time updates; plain fetch for other pages
     if (page === 1) {
-      const es = new EventSource(`${BASE}/reviews/stream`);
-      esRef.current = es;
+      // EventSource cannot send Authorization headers — pass JWT as ?token=
+      supabase.auth.getSession().then(({ data: sessionData }) => {
+        if (cancelled) return;
 
-      es.onmessage = (e: MessageEvent<string>) => {
-        try { applyReviewsRef.current(JSON.parse(e.data) as Review[]); } catch { /* ignore parse errors */ }
-      };
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          // No session: fall back to polling (will 401 too, but gives a clear error)
+          startFallbackPoll(1);
+          return;
+        }
 
-      es.onerror = () => {
-        es.close();
-        esRef.current = null;
-        startFallbackPoll(1);
-      };
+        const url = `${BASE}/reviews/stream?token=${encodeURIComponent(token)}`;
+        const es = new EventSource(url);
+        esRef.current = es;
+
+        es.onmessage = (e: MessageEvent<string>) => {
+          try { applyReviewsRef.current(JSON.parse(e.data) as Review[]); } catch { /* ignore */ }
+        };
+
+        es.onerror = () => {
+          closeEs();
+          if (!cancelled) startFallbackPoll(1);
+        };
+      });
     } else {
       fetchReviews(page)
         .then(applyReviewsRef.current)
