@@ -1161,6 +1161,7 @@ export function ReviewsPage() {
         open={showConnect}
         onClose={() => setShowConnect(false)}
         onConnected={() => { loadRepos(); refresh() }}
+        skipSetup={repos.length > 0}
       />
     </div>
   )

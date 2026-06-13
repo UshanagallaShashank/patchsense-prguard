@@ -434,6 +434,7 @@ interface Props {
   open: boolean
   onClose: () => void
   onConnected?: (repoFullName: string) => void
+  skipSetup?: boolean  // true when user already has connected repos
 }
 
 const SLIDE_TITLES: Record<string, string> = {
@@ -461,9 +462,9 @@ function prevStep(s: Step): Step {
   return idx > 0 ? SETUP_ORDER[idx - 1] : s
 }
 
-export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
+export function ConnectRepoModal({ open, onClose, onConnected, skipSetup = false }: Props) {
   const { user, profile } = useAuth()
-  const [step, setStep]           = useState<Step>("s1")
+  const [step, setStep]           = useState<Step>(skipSetup ? "input" : "s1")
   const [url, setUrl]             = useState("")
   const [fullName, setFullName]   = useState("")
   const [urlError, setUrlError]   = useState("")
@@ -471,7 +472,7 @@ export function ConnectRepoModal({ open, onClose, onConnected }: Props) {
   const [selectedPlan, setSelectedPlan] = useState<string>(profile?.plan ?? "free")
 
   function reset() {
-    setStep("s1")
+    setStep(skipSetup ? "input" : "s1")
     setUrl("")
     setFullName("")
     setUrlError("")
