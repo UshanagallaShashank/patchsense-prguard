@@ -15,8 +15,8 @@ _origins = [o.strip() for o in _raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-GitHub-Token"],
 )
 
 app.include_router(health.router)

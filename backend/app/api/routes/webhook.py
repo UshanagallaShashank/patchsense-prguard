@@ -78,7 +78,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
 def _latest_review(client: Any, repo: str, pr_number: int) -> dict[str, Any] | None:
     result = (
         client.table("reviews")
-        .select("id, status")
+        .select("id, status, head_sha")
         .eq("repo_full_name", repo)
         .eq("pr_number", pr_number)
         .order("created_at", desc=True)
@@ -99,18 +99,24 @@ def _update_latest_review(client: Any, repo: str, pr_number: int, patch: dict[st
 def _upsert_review(client: Any, event: Any) -> str | None:
     existing = _latest_review(client, event.repo_full_name, event.pr_number)
 
-    # Dedup guard: skip if already pending/running
+    # Skip if already in progress.
     if existing and existing.get("status") in {"pending", "running"}:
+        return None
+
+    # Skip if the same commit SHA was already reviewed successfully — avoids
+    # burning AI tokens when GitHub re-fires "synchronize" for the same push.
+    head_sha: str = getattr(event, "head_sha", "") or ""
+    if head_sha and existing and existing.get("status") == "completed" and existing.get("head_sha") == head_sha:
         return None
 
     meta = {
         "pr_title": event.pr_title,
         "head_branch": event.pr_branch,
         "author_login": event.author_login,
+        "head_sha": head_sha or None,
     }
 
     if existing:
-        # Reset existing record for a re-review
         client.table("findings").delete().eq("review_id", str(existing["id"])).execute()
         client.table("reviews").update({
             **meta,
@@ -120,7 +126,6 @@ def _upsert_review(client: Any, event: Any) -> str | None:
         }).eq("id", str(existing["id"])).execute()
         return str(existing["id"])
 
-    # No record yet — create fresh
     row = cast(dict[str, Any], client.table("reviews").insert({
         "repo_full_name": event.repo_full_name,
         "pr_number": event.pr_number,

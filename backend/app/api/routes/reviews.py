@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import Any, AsyncGenerator
 
+import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,6 +14,8 @@ from app.core.auth import get_current_user
 from app.core.supabase_client import get_supabase, get_supabase_admin
 from app.schemas.review_schema import ReviewOut
 from app.services.review_service import get_review, list_reviews
+
+log = structlog.get_logger()
 
 router = APIRouter(prefix="/api")
 
@@ -75,19 +78,19 @@ async def stream_reviews(
 
     async def generator() -> AsyncGenerator[str, None]:
         last_hash = ""
+        gh_login = user.user_metadata.get("user_name")
         while True:
             if await request.is_disconnected():
                 break
             try:
-                gh_login = user.user_metadata.get("user_name")
                 data = list_reviews(client, page=1, user_id=user_id, admin_client=get_supabase_admin(), github_login=gh_login)
                 serialized = json.dumps(data, default=str)
                 h = hashlib.md5(serialized.encode()).hexdigest()
                 if h != last_hash:
                     last_hash = h
                     yield f"data: {serialized}\n\n"
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("sse_poll_error", user_id=user_id, error=str(exc))
             await asyncio.sleep(3)
 
     return StreamingResponse(

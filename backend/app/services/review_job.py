@@ -2,10 +2,13 @@ import structlog
 
 log = structlog.get_logger()
 
+_DIFF_TRUNCATION_NOTICE = "\n\n[diff truncated — too large for analysis]"
+
 
 async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -> None:
     import httpx
     from app.agents.orchestrator import run_all_agents
+    from app.core.config import settings
     from app.core.supabase_client import get_supabase_admin
     from app.services.github_service import get_pr, get_pr_files
 
@@ -23,6 +26,12 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         )
         resp.raise_for_status()
         diff = resp.text
+
+        # Cap diff size to avoid excessive AI token spend on massive PRs.
+        limit = settings.max_diff_chars
+        if len(diff) > limit:
+            diff = diff[:limit] + _DIFF_TRUNCATION_NOTICE
+            log.warning("diff_truncated", repo=repo, pr=pr_number, chars=limit)
 
         mergeable_state = "unknown"
         conflict_files: list[str] = []
