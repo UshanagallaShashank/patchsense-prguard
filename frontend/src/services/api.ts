@@ -2,7 +2,7 @@ import type { Review } from "../types/review";
 
 // VITE_API_URL: set to backend origin in production (e.g. https://your-app.onrender.com)
 // Leave unset for local dev — Vite proxy rewrites /api → http://localhost:8000
-const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
+export const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
 
 // Returns human-readable error message from a failed response
 async function extractError(res: Response): Promise<string> {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Review } from "../types/review";
-import { fetchReviews } from "../services/api";
+import { fetchReviews, BASE } from "../services/api";
 
 const FALLBACK_POLL_MS = 5000;
 
@@ -66,7 +66,7 @@ export function useReviews(page: number) {
 
     // SSE on page 1 for real-time updates; plain fetch for other pages
     if (page === 1) {
-      const es = new EventSource("/api/reviews/stream");
+      const es = new EventSource(`${BASE}/reviews/stream`);
       esRef.current = es;
 
       es.onmessage = (e: MessageEvent<string>) => {
