@@ -1,6 +1,6 @@
 import re
 import secrets
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +9,22 @@ from pydantic import BaseModel
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.supabase_client import get_supabase_admin
+
+
+def _row(result: Any) -> dict[str, Any] | None:
+    """Safely extract a single-row dict from a Supabase response."""
+    data = result.data if hasattr(result, "data") else result
+    if isinstance(data, dict):
+        return cast(dict[str, Any], data)
+    return None
+
+
+def _rows(result: Any) -> list[dict[str, Any]]:
+    """Safely extract a list of rows from a Supabase response."""
+    data = result.data if hasattr(result, "data") else result
+    if isinstance(data, list):
+        return cast(list[dict[str, Any]], data)
+    return []
 
 router = APIRouter(prefix="/api")
 
@@ -45,15 +61,15 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
     db = get_supabase_admin()
 
     # resolve plan + bypass
-    prof = db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()
-    plan: str = prof.data.get("plan", "free") if prof.data else "free"
-    bypass: bool = prof.data.get("bypass_plan", False) if prof.data else False
+    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    plan: str = str(prof_data.get("plan", "free"))
+    bypass: bool = bool(prof_data.get("bypass_plan", False))
 
     # check repo limit
     limit = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["repos"]
     if limit is not None and not bypass:
-        existing = db.table("repos").select("id", count="exact").eq("owner_id", str(user.id)).execute()
-        if (existing.count or 0) >= limit:
+        existing = _rows(db.table("repos").select("id").eq("owner_id", str(user.id)).execute())
+        if len(existing) >= limit:
             raise HTTPException(
                 status_code=403,
                 detail=f"Repo limit reached for {plan} plan ({limit}). Upgrade to connect more.",
@@ -120,10 +136,10 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
     }, on_conflict="owner_id,full_name").execute()
 
     # add owner as a member too (for lookup convenience)
-    repo_row = db.table("repos").select("id").eq("owner_id", str(user.id)).eq("full_name", full_name).single().execute()
-    if repo_row.data:
+    repo_row = _row(db.table("repos").select("id").eq("owner_id", str(user.id)).eq("full_name", full_name).single().execute())
+    if repo_row:
         db.table("repo_members").upsert({
-            "repo_id": repo_row.data["id"],
+            "repo_id": repo_row["id"],
             "user_id": str(user.id),
             "github_login": user.user_metadata.get("user_name"),
             "role": "owner",
@@ -149,15 +165,15 @@ async def list_repos(user=Depends(get_current_user)) -> Any:
 @router.delete("/repos/{repo_id}")
 async def disconnect_repo(repo_id: str, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    row = db.table("repos").select("*").eq("id", repo_id).eq("owner_id", str(user.id)).single().execute()
-    if not row.data:
+    row = _row(db.table("repos").select("*").eq("id", repo_id).eq("owner_id", str(user.id)).single().execute())
+    if not row:
         raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
 
     # remove webhook from GitHub
-    if row.data.get("webhook_id"):
+    if row.get("webhook_id"):
         async with httpx.AsyncClient() as client:
             await client.delete(
-                f"https://api.github.com/repos/{row.data['full_name']}/hooks/{row.data['webhook_id']}",
+                f"https://api.github.com/repos/{row['full_name']}/hooks/{row['webhook_id']}",
                 headers=_gh_headers(settings.github_pat),
             )
 
@@ -189,21 +205,21 @@ async def invite_member(repo_id: str, body: InviteMemberRequest, user=Depends(ge
         raise HTTPException(status_code=403, detail="Only the repo owner can invite members.")
 
     # check member limit
-    prof = db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()
-    plan = prof.data.get("plan", "free") if prof.data else "free"
-    bypass = prof.data.get("bypass_plan", False) if prof.data else False
+    prof_data = _row(db.table("profiles").select("plan,bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    plan = str(prof_data.get("plan", "free"))
+    bypass = bool(prof_data.get("bypass_plan", False))
     limit = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["members"]
     if limit is not None and not bypass:
-        current = db.table("repo_members").select("user_id", count="exact").eq("repo_id", repo_id).execute()
-        if (current.count or 0) >= limit + 1:  # +1 for owner
+        current = _rows(db.table("repo_members").select("user_id").eq("repo_id", repo_id).execute())
+        if len(current) >= limit + 1:  # +1 for owner
             raise HTTPException(
                 status_code=403,
                 detail=f"Member limit reached for {plan} plan. Upgrade to add more.",
             )
 
     # look up GitHub user to get their Supabase id (if they've signed in)
-    invited_user = db.table("profiles").select("id").eq("github_login", body.github_login).single().execute()
-    invited_user_id = invited_user.data["id"] if invited_user.data else None
+    invited_user = _row(db.table("profiles").select("id").eq("github_login", body.github_login).single().execute())
+    invited_user_id = invited_user["id"] if invited_user else None
 
     db.table("repo_members").upsert({
         "repo_id": repo_id,
@@ -231,14 +247,14 @@ async def remove_member(repo_id: str, member_login: str, user=Depends(get_curren
 @router.get("/me")
 async def get_me(user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
-    prof = db.table("profiles").select("*").eq("id", str(user.id)).single().execute()
+    prof_data = _row(db.table("profiles").select("*").eq("id", str(user.id)).single().execute()) or {}
     return {
         "id": str(user.id),
         "email": user.email,
         "github_login": user.user_metadata.get("user_name"),
         "avatar_url": user.user_metadata.get("avatar_url"),
-        "plan": prof.data.get("plan", "free") if prof.data else "free",
-        "bypass_plan": prof.data.get("bypass_plan", False) if prof.data else False,
+        "plan": prof_data.get("plan", "free"),
+        "bypass_plan": prof_data.get("bypass_plan", False),
     }
 
 
@@ -254,8 +270,8 @@ class SetPlanRequest(BaseModel):
 async def admin_set_plan(body: SetPlanRequest, user=Depends(get_current_user)) -> Any:
     db = get_supabase_admin()
     # only users with bypass_plan can call this
-    prof = db.table("profiles").select("bypass_plan").eq("id", str(user.id)).single().execute()
-    if not (prof.data and prof.data.get("bypass_plan")):
+    prof_data = _row(db.table("profiles").select("bypass_plan").eq("id", str(user.id)).single().execute()) or {}
+    if not prof_data.get("bypass_plan"):
         raise HTTPException(status_code=403, detail="Admin only.")
 
     if body.plan not in PLAN_LIMITS:

@@ -8,7 +8,11 @@ async def get_current_user(authorization: str | None = Header(None)):
     token = authorization.removeprefix("Bearer ").strip()
     try:
         response = get_supabase_admin().auth.get_user(token)
+        if not response or not response.user:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
         return response.user
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
