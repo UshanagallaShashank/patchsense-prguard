@@ -138,43 +138,79 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function FileDiffPanel({ file, headBranch, baseBranch }: { file: ConflictFile; headBranch: string; baseBranch: string }) {
-  const [tab, setTab] = useState<"yours" | "main">("yours")
-  const content = tab === "yours" ? file.head_content : file.base_content
-  const lines = content?.split("\n") ?? []
+  const [tab, setTab] = useState<"diff" | "yours" | "main">("diff")
+
+  const renderDiff = () => {
+    if (!file.diff) return <p className="px-3 py-3 text-muted-foreground/50 text-[11px]">No diff available.</p>
+    return file.diff.split("\n").map((line, i) => {
+      let bg = "", text = "text-muted-foreground/70"
+      if (line.startsWith("+++") || line.startsWith("---")) {
+        bg = "bg-transparent"; text = "text-muted-foreground/40"
+      } else if (line.startsWith("+")) {
+        bg = "bg-green-950/60"; text = "text-green-400"
+      } else if (line.startsWith("-")) {
+        bg = "bg-red-950/60"; text = "text-red-400"
+      } else if (line.startsWith("@@")) {
+        bg = "bg-blue-950/40"; text = "text-blue-400"
+      }
+      return (
+        <div key={i} className={cn("flex gap-2 px-3 py-[1px] font-mono text-[11px] whitespace-pre-wrap break-all", bg)}>
+          <span className={cn("w-3 shrink-0 select-none", text)}>
+            {line.startsWith("+") && !line.startsWith("+++") ? "+" : line.startsWith("-") && !line.startsWith("---") ? "−" : " "}
+          </span>
+          <span className={text}>{line.startsWith("+++") || line.startsWith("---") ? line : line.slice(1) || " "}</span>
+        </div>
+      )
+    })
+  }
+
+  const renderFile = (content: string | null, label: string) => {
+    if (!content) return <p className="px-3 py-3 text-muted-foreground/50 text-[11px]">Could not fetch {label}.</p>
+    return content.split("\n").map((line, i) => (
+      <div key={i} className="flex gap-2 px-3 py-[1px] font-mono text-[11px] hover:bg-white/5">
+        <span className="text-muted-foreground/30 select-none w-7 text-right shrink-0">{i + 1}</span>
+        <span className="text-muted-foreground/80 whitespace-pre-wrap break-all">{line || " "}</span>
+      </div>
+    ))
+  }
 
   return (
     <div className="mt-2 rounded-lg border border-amber-900/30 overflow-hidden">
+      {/* toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-amber-950/30 border-b border-amber-900/30">
-        <span className="text-[10px] font-mono text-amber-300/70 truncate max-w-[60%]">{file.filename}</span>
-        <div className="flex rounded overflow-hidden border border-amber-900/40 shrink-0">
-          {(["yours", "main"] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn(
-                "text-[10px] px-2 py-0.5 transition-colors",
+        <span className="text-[10px] font-mono text-amber-300/70 truncate max-w-[45%]">{file.filename}</span>
+        <div className="flex rounded overflow-hidden border border-amber-900/40 shrink-0 text-[10px]">
+          {(["diff", "yours", "main"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={cn("px-2 py-0.5 transition-colors",
                 tab === t ? "bg-amber-900/60 text-amber-300" : "text-muted-foreground hover:text-amber-400"
               )}
             >
-              {t === "yours" ? `Your branch (${headBranch})` : `main (${baseBranch})`}
+              {t === "diff" ? "Diff" : t === "yours" ? `Yours (${headBranch})` : `Main (${baseBranch})`}
             </button>
           ))}
         </div>
       </div>
-      <div className="max-h-48 overflow-y-auto bg-black/30 font-mono text-[11px]">
-        {lines.map((line, i) => (
-          <div key={i} className="flex gap-2 px-3 py-[1px] hover:bg-white/5">
-            <span className="text-muted-foreground/30 select-none w-7 text-right shrink-0">{i + 1}</span>
-            <span className="text-muted-foreground/80 whitespace-pre-wrap break-all">{line}</span>
-          </div>
-        ))}
-        {!content && <p className="px-3 py-3 text-muted-foreground/50 text-[11px]">Could not fetch file content.</p>}
+
+      {/* legend (diff tab only) */}
+      {tab === "diff" && (
+        <div className="flex gap-3 px-3 py-1.5 border-b border-border/30 bg-black/20 text-[10px]">
+          <span className="text-green-400">+ your branch added</span>
+          <span className="text-red-400">− main has (missing from yours)</span>
+          <span className="text-blue-400">@@ hunk header</span>
+        </div>
+      )}
+
+      {/* content */}
+      <div className="max-h-72 overflow-y-auto bg-black/30">
+        {tab === "diff"  && renderDiff()}
+        {tab === "yours" && renderFile(file.head_content, "your branch")}
+        {tab === "main"  && renderFile(file.base_content, "main")}
       </div>
-      {file.head_content && file.base_content && (
-        <div className="px-3 py-2 border-t border-amber-900/20 bg-amber-950/10">
-          <p className="text-[10px] text-amber-400/70">
-            ↑ Compare the two tabs — keep the lines you want, remove the rest, then save and commit.
-          </p>
+
+      {tab === "diff" && file.diff && (
+        <div className="px-3 py-1.5 border-t border-amber-900/20 bg-amber-950/10 text-[10px] text-amber-400/60">
+          Red lines exist in main but are missing from your branch. Green lines are what your branch adds. Resolve by keeping both sets of changes.
         </div>
       )}
     </div>

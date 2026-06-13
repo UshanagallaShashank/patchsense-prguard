@@ -199,9 +199,11 @@ def get_conflict_details(
         except Exception:
             pass
 
+    import difflib
+
     files = []
     for path in conflict_files:
-        entry: dict[str, Any] = {"filename": path, "head_content": None, "base_content": None}
+        entry: dict[str, Any] = {"filename": path, "head_content": None, "base_content": None, "diff": None}
         try:
             entry["head_content"], _ = get_file(repo, path, head_branch)
         except Exception:
@@ -210,6 +212,17 @@ def get_conflict_details(
             entry["base_content"], _ = get_file(repo, path, base_branch)
         except Exception:
             pass
+
+        if entry["head_content"] is not None and entry["base_content"] is not None:
+            diff_lines = list(difflib.unified_diff(
+                entry["base_content"].splitlines(keepends=True),
+                entry["head_content"].splitlines(keepends=True),
+                fromfile=f"main/{base_branch}",
+                tofile=f"your branch/{head_branch}",
+                lineterm="",
+            ))
+            entry["diff"] = "".join(diff_lines)
+
         files.append(entry)
 
     return {"head_branch": head_branch, "base_branch": base_branch, "files": files}

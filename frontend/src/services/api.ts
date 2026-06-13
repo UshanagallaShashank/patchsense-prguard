@@ -52,6 +52,7 @@ export interface ConflictFile {
   filename: string;
   head_content: string | null;
   base_content: string | null;
+  diff: string | null;
 }
 
 export interface ConflictDetails {
