@@ -65,14 +65,7 @@ async def connect_repo(body: ConnectRepoRequest, user=Depends(get_current_user))
         raise HTTPException(status_code=422, detail=str(e))
 
     # get GitHub token from Supabase session
-    gh_token: str | None = None
-    try:
-        tokens = db.auth.admin.get_user(str(user.id))
-        # provider token not available via admin — use PAT fallback
-    except Exception:
-        pass
-
-    # use the PAT from settings as fallback (webhook install still works)
+    # provider token not available via admin API — use PAT for webhook install
     gh_token = settings.github_pat
 
     # install webhook on GitHub
