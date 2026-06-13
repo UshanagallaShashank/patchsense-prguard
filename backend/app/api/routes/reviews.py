@@ -169,20 +169,35 @@ def get_conflict_details(
     client: Client = Depends(get_supabase),
 ) -> Any:
     """For each conflicting file, return both the PR branch content and the base
-    branch content so the UI can show exactly what needs to be merged."""
-    from app.services.github_service import get_file
+    branch content. If conflict_files wasn't stored (old review), fetches live from GitHub."""
+    from app.services.github_service import get_file, get_pr, get_pr_files
 
     review = get_review(client, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    conflict_files: list[str] = review.get("conflict_files") or []
     head_branch: str = review.get("head_branch") or ""
     base_branch: str = review.get("base_branch") or "main"
     repo: str = review["repo_full_name"]
+    pr_number: int = review["pr_number"]
+    conflict_files: list[str] = review.get("conflict_files") or []
 
-    if not conflict_files or not head_branch:
-        return {"files": []}
+    if not head_branch:
+        return {"head_branch": "", "base_branch": base_branch, "files": []}
+
+    # If conflict_files weren't stored (stale review), fetch live and persist
+    if not conflict_files:
+        try:
+            pr_meta = get_pr(repo, pr_number, wait_for_mergeable=True)
+            base_branch = pr_meta.get("base", {}).get("ref", "main")
+            if pr_meta.get("mergeable") is False:
+                conflict_files = get_pr_files(repo, pr_number)
+                get_supabase_admin().table("reviews").update({
+                    "conflict_files": conflict_files,
+                    "base_branch": base_branch,
+                }).eq("id", str(review_id)).execute()
+        except Exception:
+            pass
 
     files = []
     for path in conflict_files:

@@ -225,9 +225,9 @@ function ConflictDetail({ reviewId, headBranch, baseBranch, conflictFiles, repo,
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">
-            {conflictFiles.length > 0 ? "What to fix — conflicting files" : "Re-trigger a review to detect conflict files"}
+            What to fix — conflicting files
           </p>
-          {conflictFiles.length > 0 && details === null && (
+          {details === null && (
             <button
               onClick={loadDetails}
               disabled={loading}
@@ -238,7 +238,8 @@ function ConflictDetail({ reviewId, headBranch, baseBranch, conflictFiles, repo,
           )}
         </div>
 
-        {conflictFiles.length > 0 && (
+        {/* files listed from DB — or a placeholder until loaded */}
+        {conflictFiles.length > 0 && details === null && (
           <div className="flex flex-col gap-1">
             {conflictFiles.map(f => (
               <div key={f} className="text-[11px] font-mono text-amber-300/80 bg-amber-950/30 rounded px-2 py-1 flex items-center gap-2">
@@ -246,6 +247,9 @@ function ConflictDetail({ reviewId, headBranch, baseBranch, conflictFiles, repo,
               </div>
             ))}
           </div>
+        )}
+        {conflictFiles.length === 0 && details === null && !loading && (
+          <p className="text-[11px] text-muted-foreground/50 italic">Click "Show file contents" to detect conflicting files.</p>
         )}
 
         {/* per-file diff viewer */}
