@@ -7,6 +7,7 @@ log = structlog.get_logger()
 
 _DIFF_TRUNCATION_NOTICE = "\n\n[diff truncated — too large for analysis]"
 _GH_API = "https://api.github.com"
+_SEVERITY_ICON = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
 
 _SLACK_COLORS = {"block": "#e01e5a", "review": "#f0a500", "approve": "#2eb886"}
 _REC_EMOJI    = {"block": "⛔", "review": "⚠️", "approve": "✅"}
@@ -60,7 +61,7 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
     from app.agents.summary_agent import run_summary_agent, compute_risk_score, compute_recommendation
     from app.core.config import settings
     from app.core.supabase_client import get_supabase_admin
-    from app.services.github_service import get_pr, get_pr_files, post_commit_status
+    from app.services.github_service import get_pr, get_pr_files, post_commit_status, post_pr_review
 
     client = get_supabase_admin()
     log.info("review_job_started", repo=repo, pr=pr_number, review_id=review_id)
@@ -74,14 +75,12 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
 
     head_sha: str = ""
     try:
-        # Retrieve head_sha from DB (stored by webhook before job is enqueued).
         row = client.table("reviews").select("head_sha").eq("id", review_id).maybe_single().execute()
         data = row.data if row is not None else None
         head_sha = str(data["head_sha"]) if isinstance(data, dict) and data.get("head_sha") else ""
     except Exception:
         pass
 
-    # Signal GitHub that review is in progress so PR shows a pending check.
     if head_sha and pat:
         try:
             await post_commit_status(
@@ -93,7 +92,6 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
             log.warning("commit_status_pending_failed", repo=repo, error=str(exc))
 
     try:
-        # Fetch diff and repo metadata concurrently using async httpx.
         async with httpx.AsyncClient(follow_redirects=True) as gh:
             diff_resp, meta_resp = await asyncio.gather(
                 gh.get(f"{_GH_API}/repos/{repo}/pulls/{pr_number}", headers=diff_headers, timeout=30),
@@ -102,12 +100,32 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         diff_resp.raise_for_status()
         diff = diff_resp.text
 
-        # Build a short repo context string to improve agent accuracy.
         repo_language = ""
         if meta_resp.status_code == 200:
             meta = meta_resp.json()
             repo_language = meta.get("language") or ""
         repo_context = f"Primary language: {repo_language}" if repo_language else ""
+
+        # Fetch custom rules for this repo and append to agent context.
+        try:
+            def _fetch_custom_rules() -> list[str]:
+                repo_row = client.table("repos").select("id").eq("full_name", repo).maybe_single().execute()
+                repo_data = repo_row.data if repo_row is not None else None
+                if not isinstance(repo_data, dict):
+                    return []
+                rid = repo_data.get("id")
+                if not rid:
+                    return []
+                rules_row = client.table("custom_rules").select("rule_text").eq("repo_id", rid).eq("enabled", True).execute()
+                return [str(r["rule_text"]) for r in (rules_row.data or []) if isinstance(r, dict) and r.get("rule_text")]
+
+            custom_rules = await asyncio.to_thread(_fetch_custom_rules)
+            if custom_rules:
+                rules_block = "\n\nTeam-defined rules (flag violations as high severity):\n" + "\n".join(f"- {r}" for r in custom_rules)
+                repo_context += rules_block
+                log.info("custom_rules_injected", repo=repo, count=len(custom_rules))
+        except Exception as exc:
+            log.warning("custom_rules_fetch_failed", repo=repo, error=str(exc))
 
         limit = settings.max_diff_chars
         if len(diff) > limit:
@@ -118,7 +136,6 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         conflict_files: list[str] = []
         base_branch = "main"
         try:
-            # Run sync GitHub calls in thread pool to avoid blocking the loop.
             pr_meta = await asyncio.to_thread(get_pr, repo, pr_number, True)
             mergeable_state = pr_meta.get("mergeable_state") or "unknown"
             base_branch = pr_meta.get("base", {}).get("ref", "main")
@@ -127,7 +144,6 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         except Exception as exc:
             log.warning("mergeable_check_failed", repo=repo, pr=pr_number, error=str(exc))
 
-        # Enforce per-review timeout so a hung Gemini call doesn't stall forever.
         findings = await asyncio.wait_for(
             run_all_agents(diff, repo_context),
             timeout=settings.review_timeout_seconds,
@@ -149,7 +165,6 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
             ]
             client.table("findings").insert(rows).execute()
 
-        # Run summary agent and compute risk score concurrently with the DB write.
         risk_score = compute_risk_score(findings)
         recommendation = compute_recommendation(risk_score, findings)
         narrative = await run_summary_agent(diff, findings)
@@ -167,14 +182,30 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
 
         log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings), risk_score=risk_score)
 
+        # Post inline GitHub PR review comments for all findings with line numbers.
+        if findings and head_sha and pat:
+            try:
+                gh_comments = []
+                for f in findings:
+                    if not f.get("line_number") or not f.get("file_path"):
+                        continue
+                    icon = _SEVERITY_ICON.get(f.get("severity", "info"), "⚪")
+                    body = f"{icon} **{f.get('severity','info').upper()}** `[{f.get('agent','review')}]`\n\n{f['message']}"
+                    if f.get("suggestion"):
+                        body += f"\n\n> 💡 **Suggestion:** {f['suggestion']}"
+                    gh_comments.append({
+                        "path": f["file_path"],
+                        "line": f["line_number"],
+                        "side": "RIGHT",
+                        "body": body,
+                    })
+                if gh_comments:
+                    review_body = f"**PatchSense** · Risk: {risk_score}/100 · {_REC_EMOJI.get(recommendation,'')} {recommendation.upper()}\n\n{narrative or ''}"
+                    await post_pr_review(repo, pr_number, head_sha, gh_comments, review_body, token=pat)
+                    log.info("pr_review_posted", repo=repo, pr=pr_number, comments=len(gh_comments))
+            except Exception as exc:
+                log.warning("pr_review_post_failed", repo=repo, pr=pr_number, error=str(exc))
 
-            # Log and ignore errors during Slack notification.
-            # This is a non-critical path, so we don't want it to fail the entire job.
-            # We also don't want to retry, as the webhook URL might be invalid or
-            # the Slack API might be down. The user can re-run the job manually if needed.
-            # We also don't want to post a commit status here, as it would be confusing.
-            # The user will see the review failed in the UI if the job itself fails.
-            # The most important thing is to not crash the entire job.
         # Post Slack notification if webhook configured and risk is non-trivial.
         try:
             def _fetch_slack_meta():
@@ -193,7 +224,7 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
         except Exception as exc:
             log.warning("slack_notification_failed", repo=repo, error=str(exc))
 
-        # Post final commit status: failure if any critical finding, else success.
+        # Post final commit status.
         if head_sha and pat:
             has_critical = any(f.get("severity") == "critical" for f in findings)
             if has_critical:
