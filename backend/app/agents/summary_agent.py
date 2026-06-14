@@ -39,8 +39,8 @@ async def run_summary_agent(diff: str, findings: list[dict[str, Any]]) -> str:
          for f in findings],
         separators=(",", ":"),
     )
-    content = f"Findings: {compact}\n\nPR diff (truncated to 4000 chars):\n{diff[:4000]}"
-    messages = [SystemMessage(content=SUMMARY_SYSTEM_PROMPT), HumanMessage(content=content)]
+    prompt_content = f"Findings: {compact}\n\nPR diff (truncated to 4000 chars):\n{diff[:4000]}"
+    messages = [SystemMessage(content=SUMMARY_SYSTEM_PROMPT), HumanMessage(content=prompt_content)]
     try:
         response = await _llm.ainvoke(messages)
         if not isinstance(response.content, str):
@@ -52,10 +52,4 @@ async def run_summary_agent(diff: str, findings: list[dict[str, Any]]) -> str:
         return json.loads(llm_output[json_start:json_end]).get("narrative", "")
     except Exception as exc:
         log.warning("summary_agent_failed", error=str(exc))
-        try:
-            # Attempt to parse the LLM output as JSON
-            parsed_json = json.loads(llm_output)
-            return parsed_json.get("narrative", "")
-        except json.JSONDecodeError:
-            log.warning("summary_agent_json_decode_error", output=llm_output)
-            return ""
+        return ""
