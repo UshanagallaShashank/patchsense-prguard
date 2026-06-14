@@ -261,3 +261,27 @@ export async function fetchAdminActivity(): Promise<AdminActivity[]> {
   if (!res.ok) throw new Error(await extractError(res));
   return res.json();
 }
+
+// ── risk / feedback / slack ───────────────────────────────────────────────────
+
+export async function submitFeedback(
+  reviewId: string,
+  findingId: string,
+  verdict: "false_positive" | "valid",
+): Promise<void> {
+  const res = await fetch(`${BASE}/reviews/${reviewId}/findings/${findingId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ verdict }),
+  });
+  if (!res.ok) throw new Error(await extractError(res));
+}
+
+export async function setSlackWebhook(repoId: string, webhookUrl: string | null): Promise<void> {
+  const res = await fetch(`${BASE}/repos/${repoId}/slack-webhook`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ webhook_url: webhookUrl }),
+  });
+  if (!res.ok) throw new Error(await extractError(res));
+}

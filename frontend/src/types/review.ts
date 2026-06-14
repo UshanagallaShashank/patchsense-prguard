@@ -29,4 +29,7 @@ export interface Review {
   completed_at: string | null;
   findings: Finding[];
   repo_active: boolean;
+  summary: string | null;
+  risk_score: number | null;
+  recommendation: "approve" | "review" | "block" | null;
 }

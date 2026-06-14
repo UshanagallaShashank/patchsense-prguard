@@ -1,7 +1,7 @@
 import re
 import secrets
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -438,3 +438,37 @@ async def admin_activity(user=Depends(get_current_user)) -> Any:
         .limit(25)
         .execute()
     )
+
+
+# ── Slack webhook ─────────────────────────────────────────────────────────────
+
+class SlackWebhookRequest(BaseModel):
+    webhook_url: str | None = None
+
+
+@router.put("/repos/{repo_id}/slack-webhook")
+async def set_slack_webhook(repo_id: str, body: SlackWebhookRequest, user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    row = _row(db.table("repos").select("id").eq("id", repo_id).eq("owner_id", str(user.id)).maybe_single().execute())
+    if not row:
+        raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
+    db.table("repos").update({"slack_webhook_url": body.webhook_url or None}).eq("id", repo_id).execute()
+    return {"slack_webhook_url": body.webhook_url or None}
+
+
+# ── Finding feedback ──────────────────────────────────────────────────────────
+
+class FindingFeedbackRequest(BaseModel):
+    verdict: Literal["false_positive", "valid"]
+
+
+@router.post("/reviews/{review_id}/findings/{finding_id}/feedback")
+async def submit_finding_feedback(
+    review_id: str, finding_id: str, body: FindingFeedbackRequest, user=Depends(get_current_user)
+) -> Any:
+    db = get_supabase_admin()
+    db.table("finding_feedback").upsert(
+        {"finding_id": finding_id, "user_id": str(user.id), "verdict": body.verdict},
+        on_conflict="finding_id,user_id",
+    ).execute()
+    return {"finding_id": finding_id, "verdict": body.verdict}
