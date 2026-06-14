@@ -215,10 +215,10 @@ async def post_pr_review(
 
 
 def merge_pr(repo: str, pr_number: int, token: str | None = None) -> dict[str, Any]:
-    """Merge a PR via squash merge."""
+    """Merge a PR using a standard merge commit (preserves all commits)."""
     resp = httpx.put(
         f"{_API}/repos/{repo}/pulls/{pr_number}/merge",
-        json={"merge_method": "squash"},
+        json={"merge_method": "merge"},
         headers=_headers(token),
         timeout=20,
     )
