@@ -522,3 +522,13 @@ async def delete_custom_rule(repo_id: str, rule_id: str, user=Depends(get_curren
     db = get_supabase_admin()
     _assert_repo_owner(db, repo_id, str(user.id))
     db.table("custom_rules").delete().eq("id", rule_id).eq("repo_id", repo_id).execute()
+
+
+@router.get("/admin/gemini-status")
+async def gemini_key_status(user=Depends(get_current_user)):
+    """Return per-key quota status. Admin only."""
+    db = get_supabase_admin()
+    _require_admin(user, db)
+    from app.core.gemini_key_manager import get_key_manager
+    manager = get_key_manager()
+    return {"keys": manager.status(), "available": manager.available_count, "total": len(manager._keys)}

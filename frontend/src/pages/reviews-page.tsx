@@ -753,12 +753,12 @@ function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string;
             <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={e => e.stopPropagation()}>
               <Button
                 size="sm" variant="outline"
-                className="h-6 text-[10px] px-2 gap-1"
+                className="h-8 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1"
                 onClick={handleGenerateFix}
                 disabled={generating || !repoActive}
                 title={!repoActive ? "Repo is paused — resume it to generate fixes" : undefined}
               >
-                {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                {generating ? <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />}
                 {patch ? "Regen" : "Fix"}
               </Button>
               {fpDone ? (
@@ -766,11 +766,11 @@ function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string;
               ) : (
                 <Button
                   size="sm" variant="ghost"
-                  className="h-6 w-6 p-0 text-muted-foreground/50 hover:text-orange-400 hover:bg-orange-950/30"
+                  className="h-8 w-8 sm:h-6 sm:w-6 p-0 text-muted-foreground/50 hover:text-orange-400 hover:bg-orange-950/30"
                   onClick={handleFalsePositive}
                   title="Mark as false positive"
                 >
-                  <ThumbsDown className="h-3 w-3" />
+                  <ThumbsDown className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                 </Button>
               )}
             </div>
@@ -782,7 +782,7 @@ function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string;
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="mt-2 ml-10 space-y-2">
+          <div className="mt-2 ml-0 sm:ml-10 pt-1 sm:pt-0 space-y-2">
             {f.suggestion && (
               <div className="px-3 py-2.5 bg-green-950/30 border border-green-900/40 rounded-lg text-xs text-green-400 leading-relaxed">
                 💡 {f.suggestion}
@@ -940,7 +940,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
     <Card className={cn("mb-3 overflow-hidden transition-shadow", r.status === "failed" && "border-red-900/60")}>
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <CollapsibleTrigger asChild>
-          <div className="p-4 cursor-pointer select-none hover:bg-accent/30 transition-colors">
+          <div className="p-3 sm:p-4 cursor-pointer select-none hover:bg-accent/30 transition-colors">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl shrink-0 bg-primary/10 border border-primary/20 flex items-center justify-center">
                 <GitMerge className="h-4 w-4 text-primary" />
@@ -987,7 +987,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     <RiskScoreBadge score={r.risk_score} recommendation={r.recommendation ?? null} />
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <div className="flex items-center gap-1.5 sm:gap-2 mt-2 flex-wrap">
                   {Object.entries(sevCounts).map(([s, n]) => (
                     <span key={s} className={cn("text-[11px] font-semibold", SEV_COLOR[s] ?? "text-muted-foreground")}>
                       {n} {s}
@@ -1018,21 +1018,21 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     fixAllPr ? (
                       <Button
                         size="sm" variant="outline"
-                        className="h-6 text-[10px] px-2 gap-1 border-green-900/50 text-green-400 shrink-0"
+                        className="h-7 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1 border-green-900/50 text-green-400 shrink-0"
                         onClick={e => { e.stopPropagation(); window.open(fixAllPr.url, "_blank") }}
                       >
-                        <GitPullRequest className="h-3 w-3" />
+                        <GitPullRequest className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                         Fix PR #{fixAllPr.number}
                       </Button>
                     ) : (
                       <Button
                         size="sm" variant="outline"
-                        className="h-6 text-[10px] px-2 gap-1 border-violet-900/50 text-violet-400 hover:bg-violet-950/40 shrink-0"
+                        className="h-7 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1 border-violet-900/50 text-violet-400 hover:bg-violet-950/40 shrink-0"
                         onClick={handleFixAll}
                         disabled={fixingAll}
                         title="Generate fixes for all findings, create one branch and one PR"
                       >
-                        {fixingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                        {fixingAll ? <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />}
                         {fixingAll ? "Fixing…" : "Fix All"}
                       </Button>
                     )
@@ -1041,36 +1041,36 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     !r.repo_active ? (
                       <Button
                         size="sm" variant="outline"
-                        className="h-6 text-[10px] px-2 gap-1 border-zinc-700 text-zinc-500 shrink-0 opacity-60 cursor-not-allowed"
+                        className="h-7 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1 border-zinc-700 text-zinc-500 shrink-0 opacity-60 cursor-not-allowed"
                         onClick={e => e.stopPropagation()}
                         disabled
                         title="Repo is paused — resume it in Settings → Repos to merge"
                       >
-                        <PowerOff className="h-3 w-3" />
+                        <PowerOff className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                         Paused
                       </Button>
                     ) : hasConflicts ? (
                       <Button
                         size="sm" variant="outline"
-                        className="h-6 text-[10px] px-2 gap-1 border-amber-900/50 text-amber-400 shrink-0 opacity-70 cursor-not-allowed"
+                        className="h-7 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1 border-amber-900/50 text-amber-400 shrink-0 opacity-70 cursor-not-allowed"
                         onClick={e => e.stopPropagation()}
                         disabled
                         title="This PR has merge conflicts with the base branch — resolve them on GitHub first"
                       >
-                        <AlertTriangle className="h-3 w-3" />
+                        <AlertTriangle className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                         Conflicts
                       </Button>
                     ) : (
                       <Button
                         size="sm" variant="outline"
-                        className="h-6 text-[10px] px-2 gap-1 border-purple-900/50 text-purple-400 hover:bg-purple-950/40 shrink-0"
+                        className="h-7 sm:h-6 text-xs sm:text-[10px] px-2.5 sm:px-2 gap-1 border-purple-900/50 text-purple-400 hover:bg-purple-950/40 shrink-0"
                         onClick={e => {
                           e.stopPropagation()
                           setConfirmOpen(true)
                         }}
                         disabled={merging}
                       >
-                        {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitMerge className="h-3 w-3" />}
+                        {merging ? <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" /> : <GitMerge className="h-3.5 w-3.5 sm:h-3 sm:w-3" />}
                         Merge
                       </Button>
                     )
@@ -1086,7 +1086,7 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
 
         <CollapsibleContent>
           <Separator />
-          <div className="px-5 pb-3">
+          <div className="px-3 sm:px-5 pb-3">
             {r.summary && r.status === "completed" && (
               <div className="mt-3 flex gap-3 items-start rounded-xl border border-blue-900/40 bg-blue-950/20 px-4 py-3">
                 <Sparkles className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
@@ -1259,7 +1259,7 @@ export function ReviewsPage() {
     <div className="min-h-screen bg-background">
       {/* Navbar */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-md">
-        <div className="max-w-[900px] mx-auto px-5 h-14 flex items-center justify-between">
+        <div className="max-w-[900px] mx-auto px-3 sm:px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">🛡️</span>
             <span className="font-bold text-base tracking-tight">PatchSense</span>
@@ -1275,21 +1275,21 @@ export function ReviewsPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5">
               <Settings className="h-3.5 w-3.5" />
-              Settings
+              <span className="hidden sm:inline">Settings</span>
             </Button>
 
             {/* User menu */}
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu(v => !v)}
-                className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 hover:bg-zinc-900 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 rounded-lg border border-border bg-background px-2 sm:px-2.5 py-1.5 hover:bg-zinc-900 transition-colors"
               >
                 {avatarUrl
                   ? <img src={avatarUrl} alt="" className="h-6 w-6 rounded-full" />
                   : <User className="h-4 w-4 text-zinc-400" />
                 }
                 {profile && (
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${PLAN_COLOR[profile.plan]}`}>
+                  <span className={`hidden sm:inline text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${PLAN_COLOR[profile.plan]}`}>
                     {profile.plan}
                   </span>
                 )}
@@ -1346,7 +1346,7 @@ export function ReviewsPage() {
         </div>
       </header>
 
-      <main className="max-w-[900px] mx-auto px-5 py-7">
+      <main className="max-w-[900px] mx-auto px-3 sm:px-5 py-5 sm:py-7">
 
         {/* PR state toggle */}
         {!loading && reviews.length > 0 && (
@@ -1390,13 +1390,14 @@ export function ReviewsPage() {
 
         {/* Filter panel */}
         {!loading && reviews.length > 0 && (
-          <div className="rounded-xl border border-border bg-card/40 px-4 py-3.5 mb-5 space-y-3">
+          <div className="rounded-xl border border-border bg-card/40 px-3 sm:px-4 py-3 sm:py-3.5 mb-4 sm:mb-5 space-y-2.5 sm:space-y-3">
 
             {/* Repo filter */}
             {uniqueRepos.length > 1 && (
-              <div className="flex items-start gap-3">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-12 shrink-0">Repo</span>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-10 sm:w-12 shrink-0">Repo</span>
+                <div className="overflow-x-auto -mr-3 sm:mr-0 pr-3 sm:pr-0">
+                <div className="flex flex-nowrap sm:flex-wrap gap-1.5">
                   <button
                     onClick={() => setRepoFilter("all")}
                     className={cn(
@@ -1414,7 +1415,7 @@ export function ReviewsPage() {
                       key={repo.full_name}
                       onClick={() => setRepoFilter(repo.full_name)}
                       className={cn(
-                        "h-7 px-3 rounded-full border text-xs font-medium transition-colors flex items-center gap-1.5",
+                        "h-7 px-3 rounded-full border text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap",
                         repoFilter === repo.full_name
                           ? repo.active
                             ? "border-primary/50 bg-primary/10 text-primary"
@@ -1433,12 +1434,13 @@ export function ReviewsPage() {
                     </button>
                   ))}
                 </div>
+                </div>
               </div>
             )}
 
             {/* Repo status filter */}
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-12 shrink-0">State</span>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-10 sm:w-12 shrink-0">State</span>
               <div className="flex gap-1.5">
                 {([
                   { key: "all",    label: "All"    },
@@ -1467,10 +1469,11 @@ export function ReviewsPage() {
             <div className="border-t border-border/50" />
 
             {/* Review status filter */}
-            <div className="flex items-start gap-3">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-12 shrink-0">Status</span>
-              <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                <TabsList className="h-8 gap-1 bg-transparent p-0 flex-wrap justify-start">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-1.5 w-10 sm:w-12 shrink-0">Status</span>
+              <Tabs value={statusFilter} onValueChange={setStatusFilter} className="min-w-0">
+                <div className="overflow-x-auto -mr-3 sm:mr-0 pr-3 sm:pr-0">
+                <TabsList className="h-8 gap-1 bg-transparent p-0 flex-nowrap">
                   {[
                     { key: "all",       label: "All"      },
                     { key: "pending",   label: "Pending"  },
@@ -1481,7 +1484,7 @@ export function ReviewsPage() {
                     const count = f.key === "all" ? reviews.length : reviews.filter(r => r.status === f.key).length
                     return (
                       <TabsTrigger key={f.key} value={f.key}
-                        className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                        className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5 whitespace-nowrap"
                       >
                         {f.label}
                         <Badge variant="secondary" className="text-[10px] h-4 min-w-[18px] px-1">{count}</Badge>
@@ -1489,16 +1492,18 @@ export function ReviewsPage() {
                     )
                   })}
                 </TabsList>
+                </div>
               </Tabs>
             </div>
 
             {/* Agent filter */}
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-12 shrink-0">Agent</span>
-              <Tabs value={agentFilter} onValueChange={setAgentFilter}>
-                <TabsList className="h-8 gap-1 bg-transparent p-0">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-10 sm:w-12 shrink-0">Agent</span>
+              <Tabs value={agentFilter} onValueChange={setAgentFilter} className="min-w-0">
+                <div className="overflow-x-auto -mr-3 sm:mr-0 pr-3 sm:pr-0">
+                <TabsList className="h-8 gap-1 bg-transparent p-0 flex-nowrap">
                   <TabsTrigger value="all"
-                    className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                    className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5 whitespace-nowrap"
                   >
                     <LayoutGrid className="h-3 w-3" /> All
                   </TabsTrigger>
@@ -1508,13 +1513,14 @@ export function ReviewsPage() {
                     { key: "style",       label: "Style",       icon: Sparkles },
                   ] as const).map(f => (
                     <TabsTrigger key={f.key} value={f.key}
-                      className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5"
+                      className="h-7 text-xs rounded-full border border-border data-[state=active]:border-primary/50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary gap-1.5 whitespace-nowrap"
                     >
                       <f.icon className="h-3 w-3" />
                       {f.label}
                     </TabsTrigger>
                   ))}
                 </TabsList>
+                </div>
               </Tabs>
             </div>
 

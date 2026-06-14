@@ -1,19 +1,15 @@
 import json
-import os
 from typing import Any
 
 import structlog
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from app.core.config import settings
+from app.core.gemini_key_manager import ainvoke_with_rotation
 from app.agents.prompts.summary_prompt import SUMMARY_SYSTEM_PROMPT
 
 log = structlog.get_logger()
-
-os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
-_llm = ChatGoogleGenerativeAI(model=settings.gemini_model)
 
 _WEIGHTS = {"critical": 30, "high": 10, "medium": 3, "low": 1, "info": 1}
 
@@ -42,7 +38,7 @@ async def run_summary_agent(diff: str, findings: list[dict[str, Any]]) -> str:
     prompt_content = f"Findings: {compact}\n\nPR diff (truncated to 4000 chars):\n{diff[:4000]}"
     messages = [SystemMessage(content=SUMMARY_SYSTEM_PROMPT), HumanMessage(content=prompt_content)]
     try:
-        response = await _llm.ainvoke(messages)
+        response = await ainvoke_with_rotation(messages, settings.gemini_model)
         if not isinstance(response.content, str):
             return ""
         llm_output = response.content
