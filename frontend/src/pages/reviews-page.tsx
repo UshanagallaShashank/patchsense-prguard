@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 
-import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, ClipboardList, ScanSearch, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle, LayoutDashboard, PowerOff } from "lucide-react"
+import { RefreshCw, Settings, ChevronDown, ChevronUp, Copy, Check, GitMerge, GitBranch, User, AlertTriangle, Shield, Zap, Sparkles, Flame, LayoutGrid, Wand2, GitPullRequest, Loader2, LogOut, PlusCircle, LayoutDashboard, PowerOff, ThumbsDown, BellRing, TrendingUp, Activity } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useReviews } from "../hooks/use-reviews"
@@ -15,7 +15,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { generateFix, applyFix, mergePr, fetchConflictDetails, fetchRepos } from "../services/api"
+import { generateFix, applyFix, mergePr, fetchConflictDetails, fetchRepos, submitFeedback } from "../services/api"
 import type { ConflictFile } from "../services/api"
 import type { Finding, Review, ReviewStatus } from "../types/review"
 import { ConnectRepoModal } from "../components/ConnectRepoModal"
@@ -57,6 +57,57 @@ function timeAgo(iso: string) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+/* ── RiskScoreBadge ──────────────────────────────────────────── */
+
+function RiskScoreBadge({ score, recommendation }: { score: number; recommendation: string | null }) {
+  const cfg =
+    score >= 70 ? { ring: "border-red-700/60",    bg: "bg-red-950/50",    text: "text-red-300",    label: "BLOCK",   icon: "⛔" } :
+    score >= 35 ? { ring: "border-orange-700/60",  bg: "bg-orange-950/50", text: "text-orange-300", label: "REVIEW",  icon: "⚠️" } :
+                  { ring: "border-green-700/60",   bg: "bg-green-950/50",  text: "text-green-300",  label: "APPROVE", icon: "✅" }
+  const rec = recommendation ?? (score >= 70 ? "block" : score >= 35 ? "review" : "approve")
+  const display = rec === "block" ? { label: "BLOCK", icon: "⛔" } : rec === "review" ? { label: "REVIEW", icon: "⚠️" } : { label: "APPROVE", icon: "✅" }
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold", cfg.ring, cfg.bg, cfg.text)}>
+      <span>{display.icon}</span>
+      <span className="tabular-nums">{score}</span>
+      <span className="opacity-50">/100</span>
+      <span className="opacity-60 mx-0.5">·</span>
+      <span>{display.label}</span>
+    </span>
+  )
+}
+
+/* ── StatsBar ────────────────────────────────────────────────── */
+
+function StatsBar({ reviews }: { reviews: import("../types/review").Review[] }) {
+  const completed = reviews.filter(r => r.status === "completed")
+  const critical  = reviews.reduce((n, r) => n + r.findings.filter(f => f.severity === "critical").length, 0)
+  const scored    = completed.filter(r => r.risk_score != null)
+  const avgRisk   = scored.length ? Math.round(scored.reduce((s, r) => s + (r.risk_score ?? 0), 0) / scored.length) : null
+  const blocked   = completed.filter(r => r.recommendation === "block").length
+
+  const items = [
+    { icon: Activity,    label: "Reviews",          value: reviews.length,                    color: "text-blue-400"   },
+    { icon: Flame,       label: "Critical findings", value: critical,                          color: "text-red-400"    },
+    { icon: TrendingUp,  label: "Avg risk score",    value: avgRisk != null ? `${avgRisk}/100` : "—", color: avgRisk != null && avgRisk >= 50 ? "text-orange-400" : "text-green-400" },
+    { icon: Shield,      label: "Blocked PRs",       value: blocked,                           color: "text-purple-400" },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      {items.map(({ icon: Icon, label, value, color }) => (
+        <div key={label} className="rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-3">
+          <Icon className={cn("h-4 w-4 shrink-0", color)} />
+          <div>
+            <p className={cn("text-lg font-bold leading-none", color)}>{value}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ── SettingsDrawer ──────────────────────────────────────────── */
 
 function SettingsDrawer({
@@ -71,6 +122,9 @@ function SettingsDrawer({
   const { profile, user, refreshProfile } = useAuth()
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [savingPlan, setSavingPlan]       = useState(false)
+  const [slackUrl, setSlackUrl]           = useState("")
+  const [slackRepoId, setSlackRepoId]     = useState("")
+  const [savingSlack, setSavingSlack]     = useState(false)
 
   async function handleDisconnect(repoId: string) {
     setDisconnecting(repoId)
@@ -167,6 +221,53 @@ function SettingsDrawer({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Slack notifications */}
+        <div className="py-5 border-b border-border">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <BellRing className="h-3.5 w-3.5" /> Slack Notifications
+          </p>
+          <p className="text-xs text-muted-foreground mb-3">Post a review summary to Slack when a PR is risky. Paste an <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="underline text-blue-400">incoming webhook URL</a> for the repo.</p>
+          {repos.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <select
+                className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground"
+                value={slackRepoId}
+                onChange={e => setSlackRepoId(e.target.value)}
+              >
+                <option value="">— select repo —</option>
+                {repos.map(r => <option key={r.id} value={r.id}>{r.full_name}</option>)}
+              </select>
+              <input
+                type="url"
+                placeholder="https://hooks.slack.com/services/..."
+                value={slackUrl}
+                onChange={e => setSlackUrl(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <Button
+                size="sm" variant="outline"
+                className="h-7 text-xs gap-1.5 self-end"
+                disabled={!slackRepoId || savingSlack}
+                onClick={async () => {
+                  setSavingSlack(true)
+                  try {
+                    const { setSlackWebhook } = await import("../services/api")
+                    await setSlackWebhook(slackRepoId, slackUrl || null)
+                    toast.success(slackUrl ? "Slack webhook saved" : "Slack webhook removed")
+                  } catch {
+                    toast.error("Could not save webhook")
+                  } finally {
+                    setSavingSlack(false)
+                  }
+                }}
+              >
+                {savingSlack ? <Loader2 className="h-3 w-3 animate-spin" /> : <BellRing className="h-3 w-3" />}
+                {slackUrl ? "Save webhook" : "Remove webhook"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Connected repos */}
@@ -459,8 +560,20 @@ function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string;
   const [applyMode, setApplyMode] = useState<"commit" | "pr" | null>(null)
   const [applyConfirm, setApplyConfirm] = useState(false)
   const [fixReviewed, setFixReviewed]   = useState(false)
+  const [fpDone, setFpDone]             = useState(false)
   const a = AGENT[f.agent as keyof typeof AGENT]
   const Icon = a?.icon
+
+  const handleFalsePositive = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await submitFeedback(reviewId, f.id, "false_positive")
+      setFpDone(true)
+      toast.success("Marked as false positive — we'll learn from this")
+    } catch {
+      toast.error("Could not submit feedback")
+    }
+  }
 
   const handleGenerateFix = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -531,6 +644,18 @@ function FindingRow({ f, reviewId, repoActive }: { f: Finding; reviewId: string;
                 {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                 {patch ? "Regen" : "Fix"}
               </Button>
+              {fpDone ? (
+                <span className="text-[10px] text-muted-foreground/60 italic">false positive</span>
+              ) : (
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 w-6 p-0 text-muted-foreground/50 hover:text-orange-400 hover:bg-orange-950/30"
+                  onClick={handleFalsePositive}
+                  title="Mark as false positive"
+                >
+                  <ThumbsDown className="h-3 w-3" />
+                </Button>
+              )}
             </div>
             {(f.suggestion || patch) && (
               <span className="text-muted-foreground/40 mt-1.5 shrink-0">
@@ -721,6 +846,9 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     <span className={cn("w-2 h-2 rounded-full", st.dot, st.pulse && "animate-pulse-dot")} />
                     <span className={cn("text-[11px] font-semibold", st.text)}>{st.label}</span>
                   </span>
+                  {r.risk_score != null && r.status === "completed" && (
+                    <RiskScoreBadge score={r.risk_score} recommendation={r.recommendation ?? null} />
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {Object.entries(sevCounts).map(([s, n]) => (
@@ -799,6 +927,12 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
         <CollapsibleContent>
           <Separator />
           <div className="px-5 pb-3">
+            {r.summary && r.status === "completed" && (
+              <div className="mt-3 flex gap-3 items-start rounded-xl border border-blue-900/40 bg-blue-950/20 px-4 py-3">
+                <Sparkles className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-200/80 leading-relaxed">{r.summary}</p>
+              </div>
+            )}
             {hasConflicts && (!r.pr_state || r.pr_state === "open") && (
               <ConflictDetail
                 reviewId={r.id}
@@ -928,9 +1062,6 @@ export function ReviewsPage() {
     return () => clearTimeout(t)
   }, [loading])
 
-  const total    = reviews.reduce((s, r) => s + r.findings.length, 0)
-  const critical = reviews.reduce((s, r) => s + r.findings.filter(f => f.severity === "critical").length, 0)
-  const high     = reviews.reduce((s, r) => s + r.findings.filter(f => f.severity === "high").length, 0)
   const hasActive = reviews.some(r => r.status === "pending" || r.status === "running")
   const hasFailed = reviews.some(r => r.status === "failed")
 
@@ -1095,24 +1226,7 @@ export function ReviewsPage() {
         )}
 
         {/* Stats */}
-        {!loading && reviews.length > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-7">
-            {([
-              { label: "Reviews",  value: reviews.length, cls: "text-foreground", icon: ClipboardList, iconCls: "text-muted-foreground" },
-              { label: "Findings", value: total,          cls: "text-primary",    icon: ScanSearch,    iconCls: "text-primary"          },
-              { label: "Critical", value: critical,       cls: "text-red-400",    icon: Flame,         iconCls: "text-red-400"          },
-              { label: "High",     value: high,           cls: "text-orange-400", icon: AlertTriangle, iconCls: "text-orange-400"       },
-            ] as const).map(s => (
-              <Card key={s.label}>
-                <CardContent className="p-4">
-                  <s.icon className={cn("h-5 w-5 mb-2", s.iconCls)} />
-                  <div className={cn("text-2xl font-bold leading-none", s.cls)}>{s.value}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        {!loading && reviews.length > 0 && <StatsBar reviews={reviews} />}
 
         {/* Filter panel */}
         {!loading && reviews.length > 0 && (

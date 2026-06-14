@@ -35,5 +35,8 @@ class ReviewOut(BaseModel):
     completed_at: datetime | None
     findings: list[FindingOut] = []
     repo_active: bool = True
+    summary: str | None = None
+    risk_score: int | None = None
+    recommendation: str | None = None  # "approve" | "review" | "block"
 
     model_config = {"from_attributes": True}

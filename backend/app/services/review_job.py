@@ -8,9 +8,56 @@ log = structlog.get_logger()
 _DIFF_TRUNCATION_NOTICE = "\n\n[diff truncated — too large for analysis]"
 _GH_API = "https://api.github.com"
 
+_SLACK_COLORS = {"block": "#e01e5a", "review": "#f0a500", "approve": "#2eb886"}
+_REC_EMOJI    = {"block": "⛔", "review": "⚠️", "approve": "✅"}
+
+
+async def _post_slack(
+    webhook_url: str,
+    repo: str,
+    pr_number: int,
+    pr_title: str,
+    risk_score: int,
+    recommendation: str,
+    findings: list,
+    narrative: str,
+) -> None:
+    color = _SLACK_COLORS.get(recommendation, "#aaaaaa")
+    fields = [
+        {"type": "mrkdwn", "text": f"*Risk Score*\n{risk_score}/100"},
+        {"type": "mrkdwn", "text": f"*Recommendation*\n{_REC_EMOJI.get(recommendation, '')} {recommendation.upper()}"},
+        {"type": "mrkdwn", "text": f"*Critical*\n{sum(1 for f in findings if f.get('severity') == 'critical')}"},
+        {"type": "mrkdwn", "text": f"*High*\n{sum(1 for f in findings if f.get('severity') == 'high')}"},
+    ]
+    payload = {
+        "attachments": [{
+            "color": color,
+            "blocks": [
+                {"type": "header", "text": {"type": "plain_text", "text": "🔍 PatchSense Review Complete"}},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*<https://github.com/{repo}/pull/{pr_number}|{pr_title or f'PR #{pr_number}'}>*\n`{repo}`",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "View PR"},
+                        "url": f"https://github.com/{repo}/pull/{pr_number}",
+                    },
+                },
+                {"type": "section", "fields": fields},
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"_{narrative}_"}},
+            ],
+        }]
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(webhook_url, json=payload, timeout=10)
+
 
 async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -> None:
     from app.agents.orchestrator import run_all_agents
+    from app.agents.summary_agent import run_summary_agent, compute_risk_score, compute_recommendation
     from app.core.config import settings
     from app.core.supabase_client import get_supabase_admin
     from app.services.github_service import get_pr, get_pr_files, post_commit_status
@@ -102,15 +149,38 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
             ]
             client.table("findings").insert(rows).execute()
 
+        # Run summary agent and compute risk score concurrently with the DB write.
+        risk_score = compute_risk_score(findings)
+        recommendation = compute_recommendation(risk_score, findings)
+        narrative = await run_summary_agent(diff, findings)
+
         client.table("reviews").update({
             "status": "completed",
             "completed_at": "now()",
             "mergeable_state": mergeable_state,
             "base_branch": base_branch,
             "conflict_files": conflict_files or None,
+            "summary": narrative or None,
+            "risk_score": risk_score,
+            "recommendation": recommendation,
         }).eq("id", review_id).execute()
 
-        log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings))
+        log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings), risk_score=risk_score)
+
+        # Post Slack notification if webhook configured and risk is non-trivial.
+        try:
+            repo_row = client.table("repos").select("slack_webhook_url").eq("full_name", repo).maybe_single().execute()
+            repo_data = repo_row.data if repo_row is not None else None
+            slack_url = str(repo_data["slack_webhook_url"]) if isinstance(repo_data, dict) and repo_data.get("slack_webhook_url") else None
+
+            pr_title_row = client.table("reviews").select("pr_title").eq("id", review_id).maybe_single().execute()
+            pr_data = pr_title_row.data if pr_title_row is not None else None
+            pr_title = str(pr_data["pr_title"]) if isinstance(pr_data, dict) and pr_data.get("pr_title") else f"PR #{pr_number}"
+
+            if slack_url and (recommendation in ("block", "review") or risk_score >= 30):
+                await _post_slack(slack_url, repo, pr_number, pr_title, risk_score, recommendation, findings, narrative or "")
+        except Exception as exc:
+            log.warning("slack_notification_failed", repo=repo, error=str(exc))
 
         # Post final commit status: failure if any critical finding, else success.
         if head_sha and pat:
@@ -119,12 +189,11 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
                 critical_count = sum(1 for f in findings if f.get("severity") == "critical")
                 await post_commit_status(
                     repo, head_sha, "failure",
-                    f"PatchSense: {critical_count} critical issue(s) found — review before merging",
+                    f"PatchSense: {critical_count} critical issue(s) — risk {risk_score}/100",
                     token=pat,
                 )
             else:
-                total = len(findings)
-                desc = f"PatchSense: {total} issue(s) found — no critical findings" if total else "PatchSense: No issues found"
+                desc = f"PatchSense: risk {risk_score}/100 — {len(findings)} issue(s)" if findings else "PatchSense: No issues found"
                 await post_commit_status(repo, head_sha, "success", desc, token=pat)
 
     except asyncio.TimeoutError:
