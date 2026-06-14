@@ -32,6 +32,20 @@ export async function fetchReview(id: string): Promise<Review> {
   return res.json();
 }
 
+export async function fixAllFindings(reviewId: string): Promise<{ pr_url: string; pr_number: number; applied: number; skipped: number }> {
+  const { data } = await supabase.auth.getSession();
+  const ghToken = data.session?.provider_token;
+  const res = await fetch(`${BASE}/reviews/${reviewId}/fix-all`, {
+    method: "POST",
+    headers: {
+      ...(await authHeaders()),
+      ...(ghToken ? { "X-GitHub-Token": ghToken } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(await extractError(res));
+  return res.json();
+}
+
 export async function generateFix(reviewId: string, findingId: string): Promise<{ patch: string; file_path: string }> {
   const res = await fetch(`${BASE}/reviews/${reviewId}/findings/${findingId}/fix`, {
     method: "POST",
