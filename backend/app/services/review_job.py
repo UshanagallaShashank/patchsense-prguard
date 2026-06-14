@@ -169,12 +169,15 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
 
         # Post Slack notification if webhook configured and risk is non-trivial.
         try:
-            repo_row = client.table("repos").select("slack_webhook_url").eq("full_name", repo).maybe_single().execute()
-            repo_data = repo_row.data if repo_row is not None else None
-            slack_url = str(repo_data["slack_webhook_url"]) if isinstance(repo_data, dict) and repo_data.get("slack_webhook_url") else None
+            def _fetch_slack_meta():
+                r = client.table("repos").select("slack_webhook_url").eq("full_name", repo).maybe_single().execute()
+                t = client.table("reviews").select("pr_title").eq("id", review_id).maybe_single().execute()
+                return r, t
 
-            pr_title_row = client.table("reviews").select("pr_title").eq("id", review_id).maybe_single().execute()
+            repo_row, pr_title_row = await asyncio.to_thread(_fetch_slack_meta)
+            repo_data = repo_row.data if repo_row is not None else None
             pr_data = pr_title_row.data if pr_title_row is not None else None
+            slack_url = str(repo_data["slack_webhook_url"]) if isinstance(repo_data, dict) and repo_data.get("slack_webhook_url") else None
             pr_title = str(pr_data["pr_title"]) if isinstance(pr_data, dict) and pr_data.get("pr_title") else f"PR #{pr_number}"
 
             if slack_url and (recommendation in ("block", "review") or risk_score >= 30):

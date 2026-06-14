@@ -2,12 +2,15 @@ import json
 import os
 from typing import Any
 
+import structlog
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from app.core.config import settings
 from app.agents.prompts.summary_prompt import SUMMARY_SYSTEM_PROMPT
+
+log = structlog.get_logger()
 
 os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
 _llm = ChatGoogleGenerativeAI(model=settings.gemini_model)
@@ -42,10 +45,11 @@ async def run_summary_agent(diff: str, findings: list[dict[str, Any]]) -> str:
         response = await _llm.ainvoke(messages)
         if not isinstance(response.content, str):
             return ""
-        raw = response.content
-        start, end = raw.find("{"), raw.rfind("}") + 1
-        if start == -1 or end == 0:
+        llm_output = response.content
+        json_start, json_end = llm_output.find("{"), llm_output.rfind("}") + 1
+        if json_start == -1 or json_end == 0:
             return ""
-        return json.loads(raw[start:end]).get("narrative", "")
-    except Exception:
+        return json.loads(llm_output[json_start:json_end]).get("narrative", "")
+    except Exception as exc:
+        log.warning("summary_agent_failed", error=str(exc))
         return ""

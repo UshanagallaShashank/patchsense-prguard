@@ -1,7 +1,7 @@
 import re
 import secrets
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -459,15 +459,13 @@ async def set_slack_webhook(repo_id: str, body: SlackWebhookRequest, user=Depend
 # ── Finding feedback ──────────────────────────────────────────────────────────
 
 class FindingFeedbackRequest(BaseModel):
-    verdict: str  # "false_positive" | "valid"
+    verdict: Literal["false_positive", "valid"]
 
 
 @router.post("/reviews/{review_id}/findings/{finding_id}/feedback")
 async def submit_finding_feedback(
     review_id: str, finding_id: str, body: FindingFeedbackRequest, user=Depends(get_current_user)
 ) -> Any:
-    if body.verdict not in ("false_positive", "valid"):
-        raise HTTPException(status_code=422, detail="verdict must be false_positive or valid")
     db = get_supabase_admin()
     db.table("finding_feedback").upsert(
         {"finding_id": finding_id, "user_id": str(user.id), "verdict": body.verdict},
