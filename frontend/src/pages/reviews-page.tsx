@@ -890,6 +890,26 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
   const [merging, setMerging]         = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [mergeReviewed, setMergeReviewed] = useState(false)
+  const [fixingAll, setFixingAll]     = useState(false)
+  const [fixAllPr, setFixAllPr]       = useState<{ url: string; number: number } | null>(null)
+
+  const handleFixAll = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFixingAll(true)
+    try {
+      const { fixAllFindings } = await import("../services/api")
+      const res = await fixAllFindings(r.id)
+      setFixAllPr({ url: res.pr_url, number: res.pr_number })
+      const skippedMsg = res.skipped > 0 ? ` (${res.skipped} skipped)` : ""
+      toast.success(`Fix PR #${res.pr_number} opened — ${res.applied} fix(es) applied${skippedMsg}`, {
+        action: { label: "View PR", onClick: () => window.open(res.pr_url, "_blank") },
+      })
+    } catch (err: any) {
+      toast.error("Fix All failed", { description: err.message })
+    } finally {
+      setFixingAll(false)
+    }
+  }
   const hasConflicts = r.mergeable_state === "dirty"
   const st = STATUS[r.status] ?? STATUS.pending
 
@@ -994,6 +1014,29 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground/60 ml-auto">{timeAgo(r.created_at)}</span>
+                  {r.status === "completed" && r.findings.length > 0 && r.repo_active && (
+                    fixAllPr ? (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-2 gap-1 border-green-900/50 text-green-400 shrink-0"
+                        onClick={e => { e.stopPropagation(); window.open(fixAllPr.url, "_blank") }}
+                      >
+                        <GitPullRequest className="h-3 w-3" />
+                        Fix PR #{fixAllPr.number}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-6 text-[10px] px-2 gap-1 border-violet-900/50 text-violet-400 hover:bg-violet-950/40 shrink-0"
+                        onClick={handleFixAll}
+                        disabled={fixingAll}
+                        title="Generate fixes for all findings, create one branch and one PR"
+                      >
+                        {fixingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                        {fixingAll ? "Fixing…" : "Fix All"}
+                      </Button>
+                    )
+                  )}
                   {(!r.pr_state || r.pr_state === "open") && r.status === "completed" && (
                     !r.repo_active ? (
                       <Button

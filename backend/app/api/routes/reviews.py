@@ -235,6 +235,120 @@ def apply_fix(
         return {"mode": "commit", "branch": branch, "file": file_path}
 
 
+# ── fix all ──────────────────────────────────────────────────────────────────
+
+@router.post("/reviews/{review_id}/fix-all")
+async def fix_all_findings(
+    review_id: uuid.UUID,
+    request: Request,
+    user=Depends(get_current_user),
+) -> Any:
+    """Generate patches for every finding (if not already done), apply them all
+    to a single branch, and open one PR — one fix, one commit, one review."""
+    from app.agents.fix_agent import generate_fix as ai_fix
+    from app.services.github_service import (
+        get_file, commit_patch, create_branch, create_fix_pr, apply_patch_to_content
+    )
+
+    gh_token: str | None = request.headers.get("X-GitHub-Token") or None
+    triggered_by: str | None = user.user_metadata.get("user_name")
+
+    admin = get_supabase_admin()
+    review = get_review(admin, review_id, user_id=str(user.id), admin_client=admin)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    _require_repo_active(review["repo_full_name"])
+
+    findings = review.get("findings", [])
+    if not findings:
+        raise HTTPException(status_code=400, detail="No findings to fix")
+
+    repo       = review["repo_full_name"]
+    pr_number  = review["pr_number"]
+    head_branch = review.get("head_branch") or review.get("pr_branch")
+    base_branch = review.get("base_branch") or "main"
+    if not head_branch:
+        raise HTTPException(status_code=400, detail="PR branch not available")
+
+    fix_branch = f"patchsense/fix-all-pr-{pr_number}"
+
+    # Step 1: Ensure every finding has a patch (generate missing ones).
+    for f in findings:
+        if f.get("patch"):
+            continue
+        try:
+            file_content, _ = get_file(repo, f["file_path"], head_branch, token=gh_token)
+            patch = await ai_fix(f["file_path"], file_content, f)
+            if patch:
+                admin.table("findings").update({"patch": patch}).eq("id", str(f["id"])).execute()
+                f["patch"] = patch
+        except Exception as exc:
+            log.warning("fix_all_generate_failed", finding_id=str(f["id"]), error=str(exc))
+
+    fixable = [f for f in findings if f.get("patch") and f.get("file_path")]
+    if not fixable:
+        raise HTTPException(status_code=422, detail="Could not generate any patches")
+
+    # Step 2: Group patches by file so we apply them in sequence per file.
+    from collections import defaultdict
+    patches_by_file: dict[str, list[dict]] = defaultdict(list)
+    for f in fixable:
+        patches_by_file[f["file_path"]].append(f)
+
+    # Step 3: Create the fix branch.
+    try:
+        create_branch(repo, fix_branch, head_branch, token=gh_token)
+    except Exception as exc:
+        # Branch may already exist from a previous attempt — continue.
+        log.warning("fix_all_create_branch", branch=fix_branch, error=str(exc))
+
+    # Step 4: Apply all patches per file with one commit per file.
+    applied: list[str] = []
+    skipped: list[str] = []
+    for file_path, file_findings in patches_by_file.items():
+        try:
+            content, sha = get_file(repo, file_path, fix_branch, token=gh_token)
+            for f in file_findings:
+                try:
+                    content = apply_patch_to_content(content, f["patch"])
+                    applied.append(f["message"][:60])
+                except Exception:
+                    skipped.append(f["message"][:60])
+            severities = ", ".join(sorted({f["severity"] for f in file_findings}, key=lambda s: ["critical","high","medium","low","info"].index(s)))
+            commit_msg = f"fix({file_path}): apply PatchSense fixes [{severities}]"
+            commit_patch(repo, fix_branch, file_path, content, sha, commit_msg,
+                         token=gh_token, triggered_by=triggered_by)
+        except Exception as exc:
+            log.warning("fix_all_commit_failed", file=file_path, error=str(exc))
+            skipped.extend(f["message"][:60] for f in file_findings)
+
+    if not applied:
+        raise HTTPException(status_code=422, detail="All patches failed to apply")
+
+    # Step 5: Open one PR summarising all fixes.
+    applied_bullets  = "\n".join(f"- {m}" for m in applied)
+    skipped_bullets  = ("\n\n**Skipped (conflicting patches):**\n" + "\n".join(f"- {m}" for m in skipped)) if skipped else ""
+    pr_body = (
+        f"## PatchSense — Fix All\n\n"
+        f"Auto-generated fixes for **{len(applied)} finding(s)** found in PR #{pr_number}.\n\n"
+        f"**Applied:**\n{applied_bullets}{skipped_bullets}"
+    )
+    try:
+        pr = create_fix_pr(
+            repo,
+            head_branch=fix_branch,
+            base_branch=head_branch,
+            title=f"fix: PatchSense auto-fix {len(applied)} issue(s) from PR #{pr_number}",
+            body=pr_body,
+            token=gh_token,
+            triggered_by=triggered_by,
+        )
+        return {"pr_url": pr["html_url"], "pr_number": pr["number"], "applied": len(applied), "skipped": len(skipped)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not open PR: {exc}")
+
+
 # ── conflict details ─────────────────────────────────────────────────────────
 
 @router.get("/reviews/{review_id}/conflict-details")
