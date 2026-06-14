@@ -167,6 +167,14 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
 
         log.info("review_job_done", repo=repo, pr=pr_number, findings=len(findings), risk_score=risk_score)
 
+
+            # Log and ignore errors during Slack notification.
+            # This is a non-critical path, so we don't want it to fail the entire job.
+            # We also don't want to retry, as the webhook URL might be invalid or
+            # the Slack API might be down. The user can re-run the job manually if needed.
+            # We also don't want to post a commit status here, as it would be confusing.
+            # The user will see the review failed in the UI if the job itself fails.
+            # The most important thing is to not crash the entire job.
         # Post Slack notification if webhook configured and risk is non-trivial.
         try:
             def _fetch_slack_meta():
