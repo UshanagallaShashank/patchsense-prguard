@@ -1105,10 +1105,19 @@ function ReviewCard({ r, agentFilter }: { r: Review; agentFilter: string }) {
             )}
             {r.status === "failed" && (
               <div className="my-3 flex gap-3 items-start bg-red-950/30 border border-red-900/50 rounded-xl px-4 py-3">
-                <AlertTriangle className="text-red-400 h-5 w-5 shrink-0" />
-                <div>
+                <AlertTriangle className="text-red-400 h-4 w-4 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-red-400">Review failed</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">The AI agents encountered an error. Check Render logs for details.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    AI agents hit an error (usually a Gemini quota or auth issue). Open the PR again to trigger a new review, or push an empty commit.
+                  </p>
+                  <a
+                    href={`https://github.com/${r.repo_full_name}/pull/${r.pr_number}`}
+                    target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-[11px] text-red-400/70 hover:text-red-400 underline underline-offset-2"
+                  >
+                    Open PR #{r.pr_number} on GitHub ↗
+                  </a>
                 </div>
               </div>
             )}
@@ -1202,6 +1211,7 @@ export function ReviewsPage() {
   const [repos, setRepos]                 = useState<{id:string;full_name:string}[]>([])
   const [reposLoaded, setReposLoaded]     = useState(false)
   const [timedOut, setTimedOut]           = useState(false)
+  const [failedDismissed, setFailedDismissed] = useState(false)
   const { reviews, loading, error, refresh } = useReviews(page)
   const { profile, user, signOut } = useAuth()
   const navigate = useNavigate()
@@ -1223,7 +1233,12 @@ export function ReviewsPage() {
   }, [loading])
 
   const hasActive = reviews.some(r => r.status === "pending" || r.status === "running")
-  const hasFailed = reviews.some(r => r.status === "failed")
+  // Only flag failures from the last 24 h — old failures should not banner every session
+  const recentFailed = reviews.filter(r => {
+    if (r.status !== "failed") return false
+    return Date.now() - new Date(r.created_at).getTime() < 86_400_000
+  })
+  const hasFailed = recentFailed.length > 0 && !failedDismissed
 
   // Unique repos seen in reviews, with their active status
   const uniqueRepos = Array.from(
@@ -1270,7 +1285,7 @@ export function ReviewsPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={refresh} className="h-8 w-8">
+            <Button variant="outline" size="icon" onClick={() => { setFailedDismissed(false); refresh() }} className="h-8 w-8">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5">
@@ -1372,15 +1387,26 @@ export function ReviewsPage() {
           </Tabs>
         )}
 
-        {/* Failed banner */}
+        {/* Failed banner — only recent failures, dismissible */}
         {hasFailed && (
-          <Card className="mb-5 border-red-900/50 bg-red-950/20">
+          <Card className="mb-4 border-red-900/50 bg-red-950/20">
             <CardContent className="px-4 py-3 flex items-center gap-3">
               <AlertTriangle className="text-red-400 h-5 w-5 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-red-400">One or more reviews failed</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Check Render deployment logs. Usually an agent API error.</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-400">
+                  {recentFailed.length === 1 ? "1 review failed" : `${recentFailed.length} reviews failed`} in the last 24 h
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Usually a Gemini quota or network error — expand the card below to see which PR.
+                </p>
               </div>
+              <button
+                onClick={() => setFailedDismissed(true)}
+                className="shrink-0 text-muted-foreground/50 hover:text-muted-foreground transition-colors p-1 rounded"
+                title="Dismiss"
+              >
+                ✕
+              </button>
             </CardContent>
           </Card>
         )}
