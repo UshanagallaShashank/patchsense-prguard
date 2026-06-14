@@ -277,6 +277,48 @@ export async function submitFeedback(
   if (!res.ok) throw new Error(await extractError(res));
 }
 
+// ── custom rules ─────────────────────────────────────────────────────────────
+
+export interface CustomRule {
+  id: string
+  rule_text: string
+  enabled: boolean
+  created_at: string
+}
+
+export async function fetchCustomRules(repoId: string): Promise<CustomRule[]> {
+  const res = await fetch(`${BASE}/repos/${repoId}/rules`, { headers: await authHeaders() })
+  if (!res.ok) throw new Error(await extractError(res))
+  return res.json()
+}
+
+export async function createCustomRule(repoId: string, ruleText: string): Promise<CustomRule> {
+  const res = await fetch(`${BASE}/repos/${repoId}/rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ rule_text: ruleText }),
+  })
+  if (!res.ok) throw new Error(await extractError(res))
+  return res.json()
+}
+
+export async function toggleCustomRule(repoId: string, ruleId: string): Promise<{ id: string; enabled: boolean }> {
+  const res = await fetch(`${BASE}/repos/${repoId}/rules/${ruleId}`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+  })
+  if (!res.ok) throw new Error(await extractError(res))
+  return res.json()
+}
+
+export async function deleteCustomRule(repoId: string, ruleId: string): Promise<void> {
+  const res = await fetch(`${BASE}/repos/${repoId}/rules/${ruleId}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  })
+  if (!res.ok) throw new Error(await extractError(res))
+}
+
 export async function setSlackWebhook(repoId: string, webhookUrl: string | null): Promise<void> {
   const res = await fetch(`${BASE}/repos/${repoId}/slack-webhook`, {
     method: "PUT",

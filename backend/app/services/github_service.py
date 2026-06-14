@@ -188,6 +188,32 @@ async def post_commit_status(
     resp.raise_for_status()
 
 
+async def post_pr_review(
+    repo: str,
+    pr_number: int,
+    head_sha: str,
+    comments: list[dict],
+    body: str = "",
+    token: str | None = None,
+) -> None:
+    """Post an inline pull request review with per-line comments."""
+    import httpx as _httpx
+    payload = {
+        "commit_id": head_sha,
+        "event": "COMMENT",
+        "body": body,
+        "comments": comments,
+    }
+    async with _httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{_API}/repos/{repo}/pulls/{pr_number}/reviews",
+            json=payload,
+            headers=_headers(token),
+            timeout=20,
+        )
+    resp.raise_for_status()
+
+
 def merge_pr(repo: str, pr_number: int, token: str | None = None) -> dict[str, Any]:
     """Merge a PR via squash merge."""
     resp = httpx.put(

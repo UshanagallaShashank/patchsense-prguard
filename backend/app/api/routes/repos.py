@@ -472,3 +472,53 @@ async def submit_finding_feedback(
         on_conflict="finding_id,user_id",
     ).execute()
     return {"finding_id": finding_id, "verdict": body.verdict}
+
+
+# ── Custom rules ───────────────────────────────────────────────────────────────
+
+class CustomRuleRequest(BaseModel):
+    rule_text: str
+
+
+def _assert_repo_owner(db: Any, repo_id: str, user_id: str) -> None:
+    row = _row(db.table("repos").select("id").eq("id", repo_id).eq("owner_id", user_id).maybe_single().execute())
+    if not row:
+        raise HTTPException(status_code=404, detail="Repo not found or not your repo.")
+
+
+@router.get("/repos/{repo_id}/rules")
+async def list_custom_rules(repo_id: str, user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    _assert_repo_owner(db, repo_id, str(user.id))
+    rows = db.table("custom_rules").select("id,rule_text,enabled,created_at").eq("repo_id", repo_id).order("created_at").execute()
+    return rows.data or []
+
+
+@router.post("/repos/{repo_id}/rules", status_code=201)
+async def create_custom_rule(repo_id: str, body: CustomRuleRequest, user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    _assert_repo_owner(db, repo_id, str(user.id))
+    rule_text = body.rule_text.strip()
+    if not rule_text:
+        raise HTTPException(status_code=422, detail="rule_text cannot be empty.")
+    row = db.table("custom_rules").insert({"repo_id": repo_id, "rule_text": rule_text}).execute()
+    return (row.data or [{}])[0]
+
+
+@router.patch("/repos/{repo_id}/rules/{rule_id}")
+async def toggle_custom_rule(repo_id: str, rule_id: str, user=Depends(get_current_user)) -> Any:
+    db = get_supabase_admin()
+    _assert_repo_owner(db, repo_id, str(user.id))
+    existing = _row(db.table("custom_rules").select("enabled").eq("id", rule_id).eq("repo_id", repo_id).maybe_single().execute())
+    if not existing:
+        raise HTTPException(status_code=404, detail="Rule not found.")
+    new_state = not (cast(dict, existing).get("enabled", True))
+    db.table("custom_rules").update({"enabled": new_state}).eq("id", rule_id).execute()
+    return {"id": rule_id, "enabled": new_state}
+
+
+@router.delete("/repos/{repo_id}/rules/{rule_id}", status_code=204)
+async def delete_custom_rule(repo_id: str, rule_id: str, user=Depends(get_current_user)) -> None:
+    db = get_supabase_admin()
+    _assert_repo_owner(db, repo_id, str(user.id))
+    db.table("custom_rules").delete().eq("id", rule_id).eq("repo_id", repo_id).execute()

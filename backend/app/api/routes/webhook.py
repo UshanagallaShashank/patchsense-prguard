@@ -68,7 +68,12 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -
         review_id = _upsert_review(client, event)
         if review_id is None:
             return Response(status_code=200)
-        ctx = {"github_pat": settings.github_pat}
+        # Pass installation_id so the job can mint a scoped GitHub App token
+        # for this customer instead of using the owner's PAT.
+        ctx = {
+            "github_pat": settings.github_pat,
+            "installation_id": event.installation_id,
+        }
         background_tasks.add_task(run_review_job, ctx, event.repo_full_name, event.pr_number, review_id)
         return Response(status_code=202)
 

@@ -125,6 +125,19 @@ function SettingsDrawer({
   const [slackUrl, setSlackUrl]           = useState("")
   const [slackRepoId, setSlackRepoId]     = useState("")
   const [savingSlack, setSavingSlack]     = useState(false)
+  const [rulesRepoId, setRulesRepoId]     = useState("")
+  const [rules, setRules]                 = useState<import("../services/api").CustomRule[]>([])
+  const [rulesLoading, setRulesLoading]   = useState(false)
+  const [newRule, setNewRule]             = useState("")
+  const [addingRule, setAddingRule]       = useState(false)
+
+  const loadRules = async (repoId: string) => {
+    setRulesLoading(true)
+    try {
+      const { fetchCustomRules } = await import("../services/api")
+      setRules(await fetchCustomRules(repoId))
+    } catch { setRules([]) } finally { setRulesLoading(false) }
+  }
 
   async function handleDisconnect(repoId: string) {
     setDisconnecting(repoId)
@@ -266,6 +279,110 @@ function SettingsDrawer({
                 {savingSlack ? <Loader2 className="h-3 w-3 animate-spin" /> : <BellRing className="h-3 w-3" />}
                 {slackUrl ? "Save webhook" : "Remove webhook"}
               </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Custom AI rules */}
+        <div className="py-5 border-b border-border">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-violet-400" /> Custom AI Rules
+          </p>
+          <p className="text-xs text-muted-foreground mb-3">Write rules in plain English. Gemini will flag violations on every PR.</p>
+          {repos.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <select
+                className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground"
+                value={rulesRepoId}
+                onChange={e => { setRulesRepoId(e.target.value); if (e.target.value) loadRules(e.target.value) }}
+              >
+                <option value="">— select repo —</option>
+                {repos.map(r => <option key={r.id} value={r.id}>{r.full_name}</option>)}
+              </select>
+
+              {rulesRepoId && (
+                <>
+                  {rulesLoading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading rules…
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                      {rules.length === 0 && (
+                        <p className="text-xs text-muted-foreground/60 italic py-1">No rules yet. Add one below.</p>
+                      )}
+                      {rules.map(rule => (
+                        <div key={rule.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2 text-xs">
+                          <button
+                            className={`h-3 w-3 rounded-sm border shrink-0 flex items-center justify-center ${rule.enabled ? "bg-violet-500 border-violet-500" : "border-zinc-600"}`}
+                            onClick={async () => {
+                              try {
+                                const { toggleCustomRule } = await import("../services/api")
+                                const updated = await toggleCustomRule(rulesRepoId, rule.id)
+                                setRules(rs => rs.map(r => r.id === rule.id ? { ...r, enabled: updated.enabled } : r))
+                              } catch { toast.error("Could not update rule") }
+                            }}
+                          >
+                            {rule.enabled && <Check className="h-2 w-2 text-white" />}
+                          </button>
+                          <span className={`flex-1 leading-snug ${rule.enabled ? "text-foreground" : "text-muted-foreground/50 line-through"}`}>
+                            {rule.rule_text}
+                          </span>
+                          <button
+                            className="text-muted-foreground/40 hover:text-red-400 shrink-0 transition-colors"
+                            onClick={async () => {
+                              try {
+                                const { deleteCustomRule } = await import("../services/api")
+                                await deleteCustomRule(rulesRepoId, rule.id)
+                                setRules(rs => rs.filter(r => r.id !== rule.id))
+                              } catch { toast.error("Could not delete rule") }
+                            }}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      type="text"
+                      placeholder="e.g. Never use console.log in production code"
+                      value={newRule}
+                      onChange={e => setNewRule(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key !== "Enter" || !newRule.trim() || addingRule) return
+                        e.preventDefault()
+                        setAddingRule(true)
+                        try {
+                          const { createCustomRule } = await import("../services/api")
+                          const created = await createCustomRule(rulesRepoId, newRule.trim())
+                          setRules(rs => [...rs, created])
+                          setNewRule("")
+                          toast.success("Rule added")
+                        } catch { toast.error("Could not add rule") } finally { setAddingRule(false) }
+                      }}
+                      className="flex-1 h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <Button
+                      size="sm" variant="outline" className="h-8 px-2 text-xs gap-1"
+                      disabled={!newRule.trim() || addingRule}
+                      onClick={async () => {
+                        if (!newRule.trim() || addingRule) return
+                        setAddingRule(true)
+                        try {
+                          const { createCustomRule } = await import("../services/api")
+                          const created = await createCustomRule(rulesRepoId, newRule.trim())
+                          setRules(rs => [...rs, created])
+                          setNewRule("")
+                          toast.success("Rule added")
+                        } catch { toast.error("Could not add rule") } finally { setAddingRule(false) }
+                      }}
+                    >
+                      {addingRule ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
