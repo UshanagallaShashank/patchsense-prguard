@@ -52,4 +52,10 @@ async def run_summary_agent(diff: str, findings: list[dict[str, Any]]) -> str:
         return json.loads(llm_output[json_start:json_end]).get("narrative", "")
     except Exception as exc:
         log.warning("summary_agent_failed", error=str(exc))
-        return ""
+        try:
+            # Attempt to parse the LLM output as JSON
+            parsed_json = json.loads(llm_output)
+            return parsed_json.get("narrative", "")
+        except json.JSONDecodeError:
+            log.warning("summary_agent_json_decode_error", output=llm_output)
+            return ""
