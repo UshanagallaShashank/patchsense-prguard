@@ -10,7 +10,7 @@ app = FastAPI(title="PatchSense PR Guard", version="0.1.0")
 # CORS_ORIGINS: comma-separated list of allowed frontend origins.
 # Defaults to localhost dev server; set in production env.
 _raw = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
-_origins = [o.strip() for o in _raw.split(",") if o.strip()]
+_origins = [o.strip().rstrip("/") for o in _raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
