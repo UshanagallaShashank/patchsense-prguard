@@ -82,11 +82,9 @@ class GeminiKeyManager:
 def _load_key_manager() -> GeminiKeyManager:
     from app.core.config import settings
 
-    # Support GEMINI_API_KEYS (comma-separated) or fall back to GEMINI_API_KEY.
-    import os
-    multi = os.environ.get("GEMINI_API_KEYS", "")
-    if multi:
-        keys = [k.strip() for k in multi.split(",") if k.strip()]
+    # GEMINI_API_KEYS (comma-separated) takes priority; fall back to GEMINI_API_KEY.
+    if settings.gemini_api_keys:
+        keys = [k.strip() for k in settings.gemini_api_keys.split(",") if k.strip()]
     else:
         keys = [settings.gemini_api_key] if settings.gemini_api_key else []
 

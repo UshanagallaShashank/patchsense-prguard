@@ -1,18 +1,14 @@
 import json
-import os
 from typing import Any
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 from google.api_core.exceptions import ResourceExhausted
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.core.config import settings
+from app.core.gemini_key_manager import ainvoke_with_rotation
 from app.agents.prompts import PERFORMANCE_SYSTEM_PROMPT
-
-os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
-_llm = ChatGoogleGenerativeAI(model=settings.gemini_model)
 
 
 @traceable(name="performance_agent")
@@ -21,7 +17,7 @@ async def run_performance_agent(diff: str, repo_context: str = "") -> list[dict[
     context_line = f"\nRepo context: {repo_context}\n" if repo_context else ""
     content = f"{context_line}PR diff:\n{diff}"
     messages = [SystemMessage(content=PERFORMANCE_SYSTEM_PROMPT), HumanMessage(content=content)]
-    response = await _llm.ainvoke(messages)
+    response = await ainvoke_with_rotation(messages, settings.gemini_model)
     if not isinstance(response.content, str):
         return []
     return _parse_findings(response.content, agent="performance")

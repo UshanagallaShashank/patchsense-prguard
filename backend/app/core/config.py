@@ -13,7 +13,11 @@ class Settings(BaseSettings):
     github_owner: str = ""
 
     # AI
-    gemini_api_key: str
+    gemini_api_key: str = ""
+    # Comma-separated list of extra API keys for automatic rotation when one hits 429.
+    # Example: GEMINI_API_KEYS=key1,key2,key3
+    # Falls back to GEMINI_API_KEY when unset.
+    gemini_api_keys: str = ""
     gemini_model: str = "gemini-2.5-flash-lite"
 
     # LangSmith tracing — optional; tracing is disabled when key is empty
