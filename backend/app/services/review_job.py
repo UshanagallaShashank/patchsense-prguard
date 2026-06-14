@@ -66,7 +66,19 @@ async def run_review_job(ctx: dict, repo: str, pr_number: int, review_id: str) -
     client = get_supabase_admin()
     log.info("review_job_started", repo=repo, pr=pr_number, review_id=review_id)
 
-    pat = ctx.get("github_pat") or settings.github_pat
+    # Prefer explicit PAT (dev/owner); fall back to GitHub App installation token
+    # so every customer's repo is accessed with their own scoped credential.
+    pat: str = ctx.get("github_pat") or settings.github_pat or ""
+    if not pat:
+        installation_id = ctx.get("installation_id")
+        if installation_id:
+            try:
+                from app.core.installation_token import get_installation_token
+                pat = get_installation_token(int(installation_id))
+                log.info("using_installation_token", repo=repo, installation_id=installation_id)
+            except Exception as exc:
+                log.error("installation_token_failed", repo=repo, error=str(exc))
+
     diff_headers = {"Accept": "application/vnd.github.v3.diff"}
     api_headers = {"Accept": "application/vnd.github.v3+json", "X-GitHub-Api-Version": "2022-11-28"}
     if pat:
