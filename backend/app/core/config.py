@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Max time a single specialist agent (security/performance/style) gets before
     # it's treated as failed and excluded from the merged findings.
     agent_timeout_seconds: float = 60.0
+    # Extra attempts an agent gets at the orchestrator level after a timeout or
+    # unhandled exception (on top of any internal retries the agent does itself).
+    agent_retry_attempts: int = 1
     # Maximum diff size sent to AI agents (chars). Larger diffs are truncated.
     max_diff_chars: int = 40_000
 
