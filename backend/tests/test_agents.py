@@ -138,7 +138,38 @@ async def test_orchestrator_handles_agent_exception():
         patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
     ):
         from app.agents.orchestrator import run_all_agents
-        result = await run_all_agents("diff")
+        result = await run_all_agents("diff", retries=0)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_retries_failed_agent_then_succeeds():
+    sec = AsyncMock(side_effect=[RuntimeError("transient"), [
+        {"file_path": "a.py", "line_number": 1, "severity": "critical", "message": "sec", "suggestion": "fix", "agent": "security"}
+    ]])
+    with (
+        patch("app.agents.orchestrator.run_security_agent", sec),
+        patch("app.agents.orchestrator.run_performance_agent", AsyncMock(return_value=[])),
+        patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
+    ):
+        from app.agents.orchestrator import run_all_agents
+        result = await run_all_agents("diff", retries=1)
+    assert sec.call_count == 2
+    assert len(result) == 1
+    assert result[0]["agent"] == "security"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_gives_up_after_exhausting_retries():
+    sec = AsyncMock(side_effect=RuntimeError("always down"))
+    with (
+        patch("app.agents.orchestrator.run_security_agent", sec),
+        patch("app.agents.orchestrator.run_performance_agent", AsyncMock(return_value=[])),
+        patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
+    ):
+        from app.agents.orchestrator import run_all_agents
+        result = await run_all_agents("diff", retries=2)
+    assert sec.call_count == 3
     assert result == []
 
 
