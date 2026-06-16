@@ -39,9 +39,6 @@ class Settings(BaseSettings):
     env: str = "development"
     log_level: str = "INFO"
     review_timeout_seconds: int = 120
-    # Max time a single specialist agent (security/performance/style) gets before
-    # it's treated as failed and excluded from the merged findings.
-    agent_timeout_seconds: float = 60.0
     # Maximum diff size sent to AI agents (chars). Larger diffs are truncated.
     max_diff_chars: int = 40_000
 
