@@ -138,8 +138,110 @@ async def test_orchestrator_handles_agent_exception():
         patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
     ):
         from app.agents.orchestrator import run_all_agents
-        result = await run_all_agents("diff")
+        result = await run_all_agents("diff", retries=0)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_retries_failed_agent_then_succeeds():
+    sec = AsyncMock(side_effect=[RuntimeError("transient"), [
+        {"file_path": "a.py", "line_number": 1, "severity": "critical", "message": "sec", "suggestion": "fix", "agent": "security"}
+    ]])
+    with (
+        patch("app.agents.orchestrator.run_security_agent", sec),
+        patch("app.agents.orchestrator.run_performance_agent", AsyncMock(return_value=[])),
+        patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
+    ):
+        from app.agents.orchestrator import run_all_agents
+        result = await run_all_agents("diff", retries=1)
+    assert sec.call_count == 2
+    assert len(result) == 1
+    assert result[0]["agent"] == "security"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_gives_up_after_exhausting_retries():
+    sec = AsyncMock(side_effect=RuntimeError("always down"))
+    with (
+        patch("app.agents.orchestrator.run_security_agent", sec),
+        patch("app.agents.orchestrator.run_performance_agent", AsyncMock(return_value=[])),
+        patch("app.agents.orchestrator.run_style_agent", AsyncMock(return_value=[])),
+    ):
+        from app.agents.orchestrator import run_all_agents
+        result = await run_all_agents("diff", retries=2)
+    assert sec.call_count == 3
+    assert result == []
+
+
+# ── fix agent ─────────────────────────────────────────────────────────────────
+
+SAMPLE_FINDING = {
+    "severity": "critical",
+    "message": "SQL injection via string concatenation",
+    "suggestion": "Use parameterised queries",
+    "line_number": 14,
+    "file_path": "app/auth.py",
+}
+
+VALID_PATCH = """\
+--- a/app/auth.py
++++ b/app/auth.py
+@@ -12,2 +12,2 @@
+-cursor.execute("SELECT * FROM users WHERE name='" + username + "'")
++cursor.execute("SELECT * FROM users WHERE name = %s", (username,))"""
+
+
+def _make_fix_response(content: str) -> MagicMock:
+    mock = MagicMock()
+    mock.content = content
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_fix_agent_returns_patch_for_valid_diff():
+    with patch("app.agents.fix_agent.ainvoke_with_rotation", AsyncMock(return_value=_make_fix_response(VALID_PATCH))):
+        from app.agents.fix_agent import generate_fix
+        result = await generate_fix("app/auth.py", "file content", SAMPLE_FINDING)
+    assert result is not None
+    assert result.startswith("---")
+
+
+@pytest.mark.asyncio
+async def test_fix_agent_strips_markdown_fence_with_language_tag():
+    fenced = "```diff\n" + VALID_PATCH + "\n```"
+    with patch("app.agents.fix_agent.ainvoke_with_rotation", AsyncMock(return_value=_make_fix_response(fenced))):
+        from app.agents.fix_agent import generate_fix
+        result = await generate_fix("app/auth.py", "file content", SAMPLE_FINDING)
+    assert result is not None
+    assert result.startswith("---")
+    assert "```" not in result
+
+
+@pytest.mark.asyncio
+async def test_fix_agent_strips_fence_with_trailing_whitespace():
+    fenced = "```diff\n" + VALID_PATCH + "\n```   "
+    with patch("app.agents.fix_agent.ainvoke_with_rotation", AsyncMock(return_value=_make_fix_response(fenced))):
+        from app.agents.fix_agent import generate_fix
+        result = await generate_fix("app/auth.py", "file content", SAMPLE_FINDING)
+    assert result is not None
+    assert "```" not in result
+
+
+@pytest.mark.asyncio
+async def test_fix_agent_returns_none_for_non_diff_response():
+    with patch("app.agents.fix_agent.ainvoke_with_rotation", AsyncMock(return_value=_make_fix_response("No changes needed."))):
+        from app.agents.fix_agent import generate_fix
+        result = await generate_fix("app/auth.py", "file content", SAMPLE_FINDING)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fix_agent_handles_missing_finding_keys():
+    minimal_finding: dict = {}
+    with patch("app.agents.fix_agent.ainvoke_with_rotation", AsyncMock(return_value=_make_fix_response(VALID_PATCH))):
+        from app.agents.fix_agent import generate_fix
+        result = await generate_fix("app/auth.py", "file content", minimal_finding)
+    assert result is not None
 
 
 # ── deduplicator ──────────────────────────────────────────────────────────────

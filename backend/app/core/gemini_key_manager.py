@@ -121,7 +121,7 @@ async def ainvoke_with_rotation(messages: list, model: str) -> Any:
                 "Add more keys via GEMINI_API_KEYS or enable billing at aistudio.google.com."
             )
         try:
-            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)  # type: ignore[call-arg]
             response = await llm.ainvoke(messages)
             if attempt > 0:
                 log.info("gemini_key_rotation_success", attempt=attempt, key_suffix=key[-6:])

@@ -267,7 +267,6 @@ async def fix_all_findings(
     repo       = review["repo_full_name"]
     pr_number  = review["pr_number"]
     head_branch = review.get("head_branch") or review.get("pr_branch")
-    base_branch = review.get("base_branch") or "main"
     if not head_branch:
         raise HTTPException(status_code=400, detail="PR branch not available")
 

@@ -25,7 +25,7 @@ async def generate_fix(
 ) -> str | None:
     prompt = f"""File: {file_path}
 
-Issue ({finding['severity']}): {finding['message']}
+Issue ({finding.get('severity', 'unknown')}): {finding.get('message', 'Fix the issue')}
 Suggestion: {finding.get('suggestion', 'Fix the issue described above')}
 Line: {finding.get('line_number', 'unknown')}
 
@@ -43,5 +43,5 @@ Generate a unified diff that fixes this issue."""
     patch = response.content.strip()
     if patch.startswith("```"):
         lines = patch.splitlines()
-        patch = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+        patch = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     return patch if patch.startswith("---") or patch.startswith("@@") else None
